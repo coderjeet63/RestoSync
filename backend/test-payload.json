@@ -1,0 +1,10 @@
+{
+  "restaurantId": "69fa35a66f14e64868f3caf2",
+  "customerName": "Test User",
+  "items": [
+    {
+      "menuItemId": "69fa35a76f14e64868f3cf0e",
+      "quantity": 1
+    }
+  ]
+}
