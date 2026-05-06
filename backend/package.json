@@ -19,12 +19,15 @@
   "dependencies": {
     "@bull-board/api": "^7.0.0",
     "@bull-board/express": "^7.0.0",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@socket.io/redis-emitter": "^5.1.0",
     "@upstash/redis": "^1.38.0",
     "bullmq": "^5.76.5",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^5.10.1",
-    "mongoose": "^9.6.1"
+    "mongoose": "^9.6.1",
+    "socket.io": "^4.8.3"
   }
 }

@@ -1,17 +1,21 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
+import IORedis from 'ioredis';
+import { Emitter } from "@socket.io/redis-emitter";
 import connectDB from '../config/db.js';
 import connection from '../config/queue.js';
 import { Menu } from '../models/Menu.js';
 import { Order } from '../models/Order.js';
 
-// 1. Connect to Database (Independent connection for the worker process)
+// 1. Connect to Database
 connectDB();
+
+// 2. Initialize Socket.io Emitter (Allows separate worker process to emit events)
+const redisClient = new IORedis(process.env.UPSTASH_REDIS_URL);
+const emitter = new Emitter(redisClient);
 
 /**
  * The Worker: The Consumer.
- * This process runs in the background, picks up jobs from 'orderQueue',
- * and performs the heavy-duty database operations using Atomic Updates.
  */
 const orderWorker = new Worker('orderQueue', async (job) => {
     const { restaurantId, customerName, items, totalAmount } = job.data;
@@ -24,8 +28,6 @@ const orderWorker = new Worker('orderQueue', async (job) => {
         for (const item of items) {
             const { menuItemId, quantity } = item;
 
-            // Use Menu.findOneAndUpdate with a query that strictly checks for sufficient inventory.
-            // This is an Atomic Operation ($inc) that prevents race conditions without needing transactions.
             const updatedMenu = await Menu.findOneAndUpdate(
                 {
                     _id: menuItemId,
@@ -39,12 +41,10 @@ const orderWorker = new Worker('orderQueue', async (job) => {
                 }
             );
 
-            // If updatedMenu is null, it means either the item doesn't exist or inventory is insufficient.
             if (!updatedMenu) {
                 throw new Error(`Insufficient Inventory for item: ${menuItemId}`);
             }
 
-            // Store for historical order record
             processedItems.push({
                 menuItemId: updatedMenu._id,
                 quantity,
@@ -52,7 +52,6 @@ const orderWorker = new Worker('orderQueue', async (job) => {
             });
         }
 
-        // Create and Save the Order document
         const newOrder = new Order({
             restaurantId,
             customerName,
@@ -65,21 +64,34 @@ const orderWorker = new Worker('orderQueue', async (job) => {
 
         console.log(`✅ Order ${newOrder._id} saved successfully.`);
 
+        // ⚡ REAL-TIME UPDATE: Notify the frontend that the order is successful
+        emitter.emit("order_update", {
+            jobId: job.id,
+            orderId: newOrder._id,
+            status: "COMPLETED",
+            message: "Your order has been processed successfully!"
+        });
+
         return { orderId: newOrder._id, status: 'SUCCESS' };
 
     } catch (error) {
         console.error(`❌ Worker Logic Error (Job ${job.id}):`, error.message);
-        // Note: Without transactions (standalone MongoDB), partial inventory decrements 
-        // won't automatically roll back. In production, a Replica Set with transactions 
-        // is recommended for full ACID compliance.
-        throw error; // Triggers BullMQ retry logic
+
+        // ⚡ REAL-TIME UPDATE: Notify the frontend about the failure
+        emitter.emit("order_update", {
+            jobId: job.id,
+            status: "FAILED",
+            error: error.message
+        });
+
+        throw error; 
     }
 }, {
     connection,
-    concurrency: 5 // Process 5 orders in parallel
+    concurrency: 5 
 });
 
-// 2. Event Listeners for logging results
+// Event Listeners for logging
 orderWorker.on('completed', (job, result) => {
     console.log(`🏁 Job ${job.id} completed! Order ID: ${result.orderId}`);
 });
@@ -88,6 +100,6 @@ orderWorker.on('failed', (job, err) => {
     console.error(`🚩 Job ${job.id} failed: ${err.message}`);
 });
 
-console.log('👷 Order Worker (Atomic Mode) is up and listening for jobs...');
+console.log('👷 Order Worker (Atomic Mode + Socket Emitter) is listening...');
 
 export default orderWorker;
