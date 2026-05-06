@@ -17,6 +17,8 @@
     "nodemon": "^3.1.14"
   },
   "dependencies": {
+    "@bull-board/api": "^7.0.0",
+    "@bull-board/express": "^7.0.0",
     "@upstash/redis": "^1.38.0",
     "bullmq": "^5.76.5",
     "cors": "^2.8.6",

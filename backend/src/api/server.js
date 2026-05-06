@@ -4,6 +4,7 @@ import cors from 'cors';
 import connectDB from '../config/db.js';
 import menuRoutes from './routes/menuRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
+import { bullBoardRouter } from '../config/bullBoard.js';
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use(express.json());
 // 3. Routes
 app.use('/api/menus', menuRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/admin/queues', bullBoardRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
