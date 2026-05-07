@@ -20,6 +20,16 @@ const orderSchema = new mongoose.Schema({
         type: String,
         enum: ['PENDING', 'PAID', 'FAILED'],
         default: 'PENDING'
+    },
+    orderType: {
+        type: String,
+        enum: ['DINE_IN', 'TAKEAWAY'],
+        default: 'DINE_IN'
+    },
+    tableId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Table',
+        required: false
     }
 }, { timestamps: true });
 

@@ -10,8 +10,8 @@ export const mockWebhookPay = async (req, res) => {
     try {
         const { orderId } = req.params;
 
-        // 1. Find the order
-        const order = await Order.findById(orderId);
+        // 1. Find the order and populate table info if it exists
+        const order = await Order.findById(orderId).populate('tableId');
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
         }
@@ -25,6 +25,8 @@ export const mockWebhookPay = async (req, res) => {
             orderId: order._id, 
             restaurantId: order.restaurantId,
             status: 'PAID', 
+            orderType: order.orderType,
+            tableNumber: order.tableId ? order.tableId.tableNumber : 'N/A',
             message: 'Payment Received! Start Cooking.' 
         });
 

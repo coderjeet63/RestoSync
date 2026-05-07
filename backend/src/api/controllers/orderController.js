@@ -1,16 +1,22 @@
 import { orderQueue } from '../../config/queue.js';
+import { Table } from '../../models/Table.js';
 
 export const placeOrder = async (req, res) => {
     try {
         // Extract restaurantId from body (Customer token is not tied to one restaurant)
         const customerId = req.customer._id; // Attached by protectCustomer middleware
-        const { restaurantId, customerName, items, totalAmount } = req.body;
+        const { restaurantId, customerName, items, totalAmount, orderType, tableId } = req.body;
 
         // ✅ Basic Validation
         if (!restaurantId || !items || items.length === 0) {
             return res.status(400).json({
                 message: "Missing required fields or items.",
             });
+        }
+
+        // ✅ Handle Dine-In Table Status
+        if (orderType === 'DINE_IN' && tableId) {
+            await Table.findByIdAndUpdate(tableId, { status: 'OCCUPIED' });
         }
 
         // ✅ Add Job to Queue (Instead of saving directly to MongoDB)
@@ -21,6 +27,8 @@ export const placeOrder = async (req, res) => {
             items,
             totalAmount: totalAmount || 0,
             paymentStatus: 'PENDING',
+            orderType: orderType || 'DINE_IN',
+            tableId: tableId || null,
         }, {
             attempts: 3, // Retry on failure
             backoff: {
