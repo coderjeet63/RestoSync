@@ -84,11 +84,11 @@ const orderWorker = new Worker('orderQueue', async (job) => {
             error: error.message
         });
 
-        throw error; 
+        throw error;
     }
 }, {
     connection,
-    concurrency: 5 
+    concurrency: 5
 });
 
 // Event Listeners for logging

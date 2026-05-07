@@ -2,12 +2,14 @@ import { orderQueue } from '../../config/queue.js';
 
 export const placeOrder = async (req, res) => {
     try {
-        const { restaurantId, customerName, items, totalAmount } = req.body;
+        // Extract restaurantId from authenticated user (Force Tenant Isolation)
+        const restaurantId = req.user.restaurantId;
+        const { customerName, items, totalAmount } = req.body;
 
         // ✅ Basic Validation
-        if (!restaurantId || !items || items.length === 0) {
+        if (!items || items.length === 0) {
             return res.status(400).json({
-                message: "Missing required fields or items.",
+                message: "Missing required items.",
             });
         }
 

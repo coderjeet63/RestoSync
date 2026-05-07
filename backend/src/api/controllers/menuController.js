@@ -7,7 +7,8 @@ import redis from '../../config/redis.js';
  */
 export const getMenuByRestaurant = async (req, res) => {
     try {
-        const { restaurantId } = req.params;
+        // Force tenant isolation: ignore params and strictly use the authenticated user's restaurantId
+        const restaurantId = req.user.restaurantId;
         const cacheKey = `menu:${restaurantId}`;
 
         // 1. Attempt to fetch from Upstash Redis

@@ -21,7 +21,10 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
+import authRoutes from './routes/authRoutes.js';
+
 // 4. Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/menus', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/admin/queues', bullBoardRouter);
