@@ -2,20 +2,21 @@ import { orderQueue } from '../../config/queue.js';
 
 export const placeOrder = async (req, res) => {
     try {
-        // Extract restaurantId from authenticated user (Force Tenant Isolation)
-        const restaurantId = req.user.restaurantId;
-        const { customerName, items, totalAmount } = req.body;
+        // Extract restaurantId from body (Customer token is not tied to one restaurant)
+        const customerId = req.customer._id; // Attached by protectCustomer middleware
+        const { restaurantId, customerName, items, totalAmount } = req.body;
 
         // ✅ Basic Validation
-        if (!items || items.length === 0) {
+        if (!restaurantId || !items || items.length === 0) {
             return res.status(400).json({
-                message: "Missing required items.",
+                message: "Missing required fields or items.",
             });
         }
 
         // ✅ Add Job to Queue (Instead of saving directly to MongoDB)
         const job = await orderQueue.add("process-order", {
             restaurantId,
+            customerId,
             customerName: customerName || 'Guest',
             items,
             totalAmount: totalAmount || 0,

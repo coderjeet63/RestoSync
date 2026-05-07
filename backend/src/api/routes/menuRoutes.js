@@ -5,9 +5,10 @@ import { protect } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
-// GET /api/menus/:restaurantId (We'll change the controller to ignore the param, but the route signature can stay or change. Actually let's just make it /api/menus/my-menu)
-// Let's keep /:restaurantId for now and let the controller enforce isolation, or apply protect.
-router.route('/').get(protect, getMenuByRestaurant);
-router.route('/:restaurantId').get(protect, getMenuByRestaurant);
+// GET /api/menus/:restaurantId (Public route for Diners to scan QR and view)
+router.route('/:restaurantId').get(getMenuByRestaurant);
+
+// If we had POST, PUT, DELETE, they would be protected like this:
+// router.route('/').post(protect, createMenu);
 
 export default router;

@@ -7,8 +7,7 @@ import redis from '../../config/redis.js';
  */
 export const getMenuByRestaurant = async (req, res) => {
     try {
-        // Force tenant isolation: ignore params and strictly use the authenticated user's restaurantId
-        const restaurantId = req.user.restaurantId;
+        const { restaurantId } = req.params;
         const cacheKey = `menu:${restaurantId}`;
 
         // 1. Attempt to fetch from Upstash Redis
@@ -43,9 +42,9 @@ export const getMenuByRestaurant = async (req, res) => {
 
     } catch (error) {
         console.error('Error in getMenuByRestaurant:', error);
-        return res.status(500).json({ 
-            message: 'Internal Server Error', 
-            error: error.message 
+        return res.status(500).json({
+            message: 'Internal Server Error',
+            error: error.message
         });
     }
 };

@@ -17,6 +17,6 @@ Implement robust authentication using JSON Web Tokens (JWT) and enforce strict t
    - The `protect` middleware intercepts API requests, extracts the Bearer token, verifies its signature, and maps the request to the authenticated user.
 
 4. **Enforcing Multi-Tenancy (Data Isolation)**
-   - Protect all business routes (`/api/menus` and `/api/orders`).
-   - Remove client-provided `restaurantId` from payloads and route parameters.
-   - Instead, automatically inject `req.user.restaurantId` into database queries and cache keys to forcefully guarantee users cannot query or mutate data belonging to other restaurants.
+   - **Admin/B2B Side (`protect`)**: Applies to menu creation, analytics, and admin tasks. It forcefully guarantees users cannot query or mutate data belonging to other restaurants using `req.user.restaurantId`.
+   - **Customer/B2C Side (`protectCustomer`)**: Applies to placing orders. It verifies the user is a diner via OTP, extracts `req.customer._id`, and securely ties the order to the customer while allowing them to order from any valid `restaurantId` they choose.
+   - **Public Side**: Endpoints like `GET /api/menus/:restaurantId` are strictly read-only and open, allowing frictionless QR code scanning.

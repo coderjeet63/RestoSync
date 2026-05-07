@@ -22,11 +22,17 @@ app.use(cors());
 app.use(express.json());
 
 import authRoutes from './routes/authRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
+import customerAuthRoutes from './routes/customerAuthRoutes.js';
+import publicRoutes from './routes/publicRoutes.js';
 
 // 4. Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/customer/auth', customerAuthRoutes);
+app.use('/api/public', publicRoutes);
 app.use('/api/menus', menuRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/admin/queues', bullBoardRouter);
 
 // Health check endpoint

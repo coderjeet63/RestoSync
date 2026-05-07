@@ -1,11 +1,12 @@
 import express from 'express';
 import { placeOrder } from '../controllers/orderController.js';
 
-import { protect } from '../middlewares/authMiddleware.js';
+import { protectCustomer } from '../middlewares/customerMiddleware.js';
 
 const router = express.Router();
 
 // POST /api/orders
-router.route('/').post(protect, placeOrder);
+// Only authenticated customers can place orders
+router.route('/').post(protectCustomer, placeOrder);
 
 export default router;
