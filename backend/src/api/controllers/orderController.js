@@ -20,6 +20,7 @@ export const placeOrder = async (req, res) => {
             customerName: customerName || 'Guest',
             items,
             totalAmount: totalAmount || 0,
+            paymentStatus: 'PENDING',
         }, {
             attempts: 3, // Retry on failure
             backoff: {

@@ -48,3 +48,55 @@ export const getMenuByRestaurant = async (req, res) => {
         });
     }
 };
+
+/**
+ * @desc    Add a new menu item
+ * @route   POST /api/menus
+ * @access  Private (Admin)
+ */
+export const addMenuItem = async (req, res) => {
+    try {
+        const { category, name, price, isAvailable, availableQuantity } = req.body;
+        const restaurantId = req.user.restaurantId; // Protected by Admin authMiddleware
+
+        // Basic validation
+        if (!category || !name || !price) {
+            return res.status(400).json({ message: "Category, name, and price are required." });
+        }
+
+        // Check for Cloudinary image URL
+        let imageUrl = null;
+        if (req.file && req.file.path) {
+            imageUrl = req.file.path;
+        }
+
+        const newMenuItem = new Menu({
+            restaurantId,
+            category,
+            name,
+            price: Number(price),
+            isAvailable: isAvailable !== undefined ? isAvailable === 'true' || isAvailable === true : true,
+            availableQuantity: availableQuantity ? Number(availableQuantity) : 100,
+            imageUrl
+        });
+
+        await newMenuItem.save();
+
+        // Invalidate Redis cache for this restaurant
+        const cacheKey = `menu:${restaurantId}`;
+        await redis.del(cacheKey);
+
+        return res.status(201).json({
+            success: true,
+            message: "Menu item created successfully",
+            data: newMenuItem
+        });
+
+    } catch (error) {
+        console.error("Error in addMenuItem:", error);
+        return res.status(500).json({
+            message: 'Internal Server Error',
+            error: error.message
+        });
+    }
+};

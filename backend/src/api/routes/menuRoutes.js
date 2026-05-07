@@ -1,14 +1,14 @@
 import express from 'express';
-import { getMenuByRestaurant } from '../controllers/menuController.js';
-
-import { protect } from '../middlewares/authMiddleware.js';
+import { getMenuByRestaurant, addMenuItem } from '../controllers/menuController.js';
+import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
+import { upload } from '../middlewares/uploadMiddleware.js';
 
 const router = express.Router();
 
 // GET /api/menus/:restaurantId (Public route for Diners to scan QR and view)
 router.route('/:restaurantId').get(getMenuByRestaurant);
 
-// If we had POST, PUT, DELETE, they would be protected like this:
-// router.route('/').post(protect, createMenu);
+// POST /api/menus (Protected route for Owners/Managers to create menu items with Cloudinary image upload)
+router.route('/').post(protect, authorizeRoles('OWNER', 'MANAGER'), upload.single('image'), addMenuItem);
 
 export default router;

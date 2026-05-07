@@ -25,6 +25,7 @@ import authRoutes from './routes/authRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import customerAuthRoutes from './routes/customerAuthRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 // 4. Routes
 app.use('/api/auth', authRoutes);
@@ -33,6 +34,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/menus', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/payments', paymentRoutes);
 app.use('/admin/queues', bullBoardRouter);
 
 // Health check endpoint
