@@ -6,13 +6,14 @@ import connectDB from '../config/db.js';
 import connection from '../config/queue.js';
 import { Menu } from '../models/Menu.js';
 import { Order } from '../models/Order.js';
+import redisClient from '../config/redis.js';
 
 // 1. Connect to Database
 connectDB();
 
 // 2. Initialize Socket.io Emitter (Allows separate worker process to emit events)
-const redisClient = new IORedis(process.env.UPSTASH_REDIS_URL);
-const emitter = new Emitter(redisClient);
+const emitterRedis = new IORedis(process.env.UPSTASH_REDIS_URL);
+const emitter = new Emitter(emitterRedis);
 
 /**
  * The Worker: The Consumer.
@@ -43,6 +44,17 @@ const orderWorker = new Worker('orderQueue', async (job) => {
 
             if (!updatedMenu) {
                 throw new Error(`Insufficient Inventory for item: ${menuItemId}`);
+            }
+
+            // 🔴 Auto-Kill Switch: Disable item and bust cache if stock hits zero
+            if (updatedMenu.availableQuantity <= 0 && updatedMenu.isAvailable !== false) {
+                updatedMenu.isAvailable = false;
+                await updatedMenu.save();
+                console.log(`🚨 Item OUT OF STOCK! Auto-disabled: ${updatedMenu.name} (${menuItemId})`);
+
+                // Cache Buster: force the public menu API to re-fetch from DB
+                await redisClient.del(`menu_${restaurantId}`);
+                console.log(`🗑️ Cleared Redis cache: menu_${restaurantId}`);
             }
 
             processedItems.push({

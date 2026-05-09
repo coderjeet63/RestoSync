@@ -1,6 +1,7 @@
 import { orderQueue } from '../../config/queue.js';
 import { Table } from '../../models/Table.js';
 import { Order } from '../../models/Order.js';
+import { Menu } from '../../models/Menu.js';
 import redis from '../../config/redis.js';
 
 export const placeOrder = async (req, res) => {
@@ -19,6 +20,19 @@ export const placeOrder = async (req, res) => {
         // ✅ Handle Dine-In Table Status
         if (orderType === 'DINE_IN' && tableId) {
             await Table.findByIdAndUpdate(tableId, { status: 'OCCUPIED' });
+        }
+
+        // ✅ Pre-Flight Inventory Check (before touching the queue)
+        for (const item of items) {
+            const menuItem = await Menu.findById(item.menuItemId);
+
+            if (!menuItem || !menuItem.isAvailable) {
+                return res.status(400).json({ message: "Item is currently unavailable" });
+            }
+
+            if (menuItem.availableQuantity < item.quantity) {
+                return res.status(400).json({ message: "Not enough quantity available" });
+            }
         }
 
         // ✅ Add Job to Queue (Instead of saving directly to MongoDB)
