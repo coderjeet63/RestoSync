@@ -35,12 +35,15 @@
     "mongoose": "^9.6.1",
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
+    "pdfkit": "^0.18.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
   },
   "jest": {
     "transform": {},
-    "testMatch": ["**/src/tests/**/*.test.js"],
+    "testMatch": [
+      "**/src/tests/**/*.test.js"
+    ],
     "testEnvironment": "node"
   }
 }

@@ -1,5 +1,5 @@
 import express from 'express';
-import { placeOrder, updateOrderStatus } from '../controllers/orderController.js';
+import { placeOrder, updateOrderStatus, downloadInvoice } from '../controllers/orderController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { protectCustomer } from '../middlewares/customerMiddleware.js';
 
@@ -13,4 +13,5 @@ router.route('/').post(protectCustomer, placeOrder);
 // Only B2B Staff can update order cooking status
 router.patch('/:id/status', protect, authorizeRoles('OWNER', 'MANAGER', 'CHEF'), updateOrderStatus);
 
-export default router;
+router.get('/:id/invoice', downloadInvoice);
+export default router;  

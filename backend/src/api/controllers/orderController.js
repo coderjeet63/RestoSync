@@ -3,6 +3,7 @@ import { Table } from '../../models/Table.js';
 import { Order } from '../../models/Order.js';
 import { Menu } from '../../models/Menu.js';
 import redis from '../../config/redis.js';
+import { generateInvoicePDF } from '../../utils/invoiceGenerator.js';
 
 export const placeOrder = async (req, res) => {
     try {
@@ -111,6 +112,26 @@ export const updateOrderStatus = async (req, res) => {
         });
     } catch (error) {
         console.error("❌ Update Order Status Error:", error.message);
+        return res.status(500).json({
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
+
+export const downloadInvoice = async (req, res) => {
+    try {
+        // Corrected population path for nested items
+        const order = await Order.findById(req.params.id).populate('items.menuItemId');
+
+        if (!order) {
+            return res.status(404).json({ message: 'Order Not Found' });
+        }
+
+        generateInvoicePDF(order, res);
+
+    } catch (error) {
+        console.error("❌ Download Invoice Error:", error.message);
         return res.status(500).json({
             message: "Internal Server Error",
             error: error.message,

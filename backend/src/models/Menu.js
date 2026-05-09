@@ -7,7 +7,7 @@ const menuSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     isAvailable: { type: Boolean, default: true },
     availableQuantity: { type: Number, default: 100 }, // Concurrency testing ke liye
-    imageUrl: { type: String, default: null }
+    imageUrl: { type: String, default: null },
 }, { timestamps: true });
 
 // The Engineering Magic: Compound Index for ultra-fast category-wise fetching
