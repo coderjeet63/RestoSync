@@ -24,6 +24,20 @@ export const initSocket = (httpServer) => {
     // 3. Attach Redis Adapter
     io.adapter(createAdapter(pubClient, subClient));
 
+    // 4. Manual Pub/Sub for custom events
+    const manualSubClient = pubClient.duplicate();
+    manualSubClient.subscribe('kitchen-events', 'order-updates', (err) => {
+        if (err) console.error("Failed to subscribe to Redis channels", err);
+    });
+
+    manualSubClient.on('message', (channel, message) => {
+        if (channel === 'kitchen-events') {
+            io.emit('kitchenEvent', JSON.parse(message));
+        } else if (channel === 'order-updates') {
+            io.emit('orderStatusUpdated', JSON.parse(message));
+        }
+    });
+
     io.on('connection', (socket) => {
         console.log(`🔌 New client connected: ${socket.id}`);
 

@@ -1,5 +1,7 @@
 import { orderQueue } from '../../config/queue.js';
 import { Table } from '../../models/Table.js';
+import { Order } from '../../models/Order.js';
+import redis from '../../config/redis.js';
 
 export const placeOrder = async (req, res) => {
     try {
@@ -49,6 +51,52 @@ export const placeOrder = async (req, res) => {
     } catch (error) {
         console.error("❌ Queue Error:", error.message);
 
+        return res.status(500).json({
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * @desc    Update order status
+ * @route   PATCH /api/orders/:id/status
+ * @access  Private (Owner/Manager/Chef)
+ */
+export const updateOrderStatus = async (req, res) => {
+    try {
+        const { id: orderId } = req.params;
+        const { status } = req.body;
+
+        const allowedStatuses = ['PENDING', 'PAID', 'PREPARING', 'READY', 'DELIVERED', 'CANCELLED'];
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({ message: "Invalid status value" });
+        }
+
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        order.status = status;
+        await order.save();
+
+        const payload = JSON.stringify({
+            orderId: order._id,
+            tableId: order.tableId,
+            status: order.status,
+            message: `Order is now ${order.status}`
+        });
+
+        await redis.publish('order-updates', payload);
+        console.log(`🔔 Published status update to 'order-updates' for Order: ${order._id}`);
+
+        return res.status(200).json({
+            success: true,
+            data: order
+        });
+    } catch (error) {
+        console.error("❌ Update Order Status Error:", error.message);
         return res.status(500).json({
             message: "Internal Server Error",
             error: error.message,
