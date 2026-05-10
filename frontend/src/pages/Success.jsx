@@ -221,7 +221,7 @@ const Success = () => {
       return;
     }
 
-    window.open(`http://localhost:5000/api/orders/${jobId}/invoice`, '_blank', 'noopener,noreferrer');
+    window.open(`${import.meta.env.VITE_API_URL}/api/orders/${jobId}/invoice`, '_blank', 'noopener,noreferrer');
   };
 
   const handleBackToMenu = () => {

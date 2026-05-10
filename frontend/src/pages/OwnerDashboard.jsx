@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useStaffAuth } from '../hooks/useStaffAuth';
 import api from '../utils/api';
+import QRGenerator from '../components/QRGenerator';
 
 const StatCard = ({ label, value, description, trend, iconBg }) => (
+// ... (omitting for brevity as I'm using replace_file_content with specific TargetContent)
   <div className="group relative overflow-hidden rounded-[2.5rem] border border-white/60 bg-white/80 p-8 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.1)] backdrop-blur-xl transition-all hover:scale-[1.02] hover:shadow-2xl hover:shadow-slate-200/50">
     <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-slate-50 transition-transform group-hover:scale-150" />
     
@@ -111,7 +113,7 @@ const OwnerDashboard = () => {
         )}
 
         {/* Stats Grid */}
-        <div className="grid gap-8 md:grid-cols-3">
+        <div className="stat-cards grid gap-8 md:grid-cols-3">
           {loading ? (
             Array(3).fill(0).map((_, i) => (
               <div key={i} className="h-64 animate-pulse rounded-[2.5rem] bg-white/50 ring-1 ring-slate-100" />
@@ -139,6 +141,11 @@ const OwnerDashboard = () => {
             </>
           )}
         </div>
+
+        {/* QR Code Section */}
+        {!loading && stats && (
+          <QRGenerator restaurantId={staffUser?.restaurantId} />
+        )}
 
         {/* Footer/Context */}
         <footer className="mt-16 border-t border-slate-200 pt-8 text-center">
