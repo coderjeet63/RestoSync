@@ -159,11 +159,16 @@ export const updateOrderStatus = async (req, res) => {
             return res.status(400).json({ message: "Invalid status value" });
         }
 
+        const updateData = { status };
+        if (status === 'REJECTED') {
+            updateData.paymentStatus = 'REFUNDED';
+        }
+
         // Use atomic update to avoid failing validation on legacy/invalid records
         // that may be missing required fields added later (e.g. customerId).
         const order = await Order.findOneAndUpdate(
             { _id: orderId, restaurantId },
-            { $set: { status } },
+            { $set: updateData },
             { returnDocument: 'after' }
         );
 

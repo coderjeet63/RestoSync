@@ -22,7 +22,7 @@ router.get('/:id', protectCustomer, getCustomerOrder);
 
 // PATCH /api/orders/:id/status
 // Only B2B Staff can update order cooking status
-router.patch('/:id/status', protect, authorizeRoles('OWNER', 'MANAGER', 'CHEF'), updateOrderStatus);
+router.patch('/:id/status', protect, authorizeRoles('OWNER', 'MANAGER', 'CHEF', 'WAITER'), updateOrderStatus);
 
 router.get('/:id/invoice', downloadInvoice);
 export default router;  

@@ -35,9 +35,9 @@ const STATUS_PRESENTATION = {
     badge: 'bg-green-100 text-green-700 border-green-200',
   },
   REJECTED: {
-    label: 'Order Update',
-    message: 'Your order could not be completed. Please contact staff for help.',
-    accent: 'from-rose-500 via-red-500 to-orange-500',
+    label: 'Order Cancelled',
+    message: 'Order Cancelled by Kitchen. Refund has been initiated.',
+    accent: 'from-rose-600 via-red-600 to-red-700',
     badge: 'bg-red-100 text-red-700 border-red-200',
   },
 };
@@ -283,6 +283,20 @@ const Success = () => {
                 </div>
               </div>
 
+              {currentStatus === 'REJECTED' && (
+                <div className="mt-6 flex items-center gap-4 rounded-3xl border border-red-200 bg-red-50 p-5 text-red-800">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-lg shadow-red-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-black">Refund Initiated</h3>
+                    <p className="text-sm font-medium opacity-80">The kitchen has cancelled this order. A full refund has been triggered to your original payment method.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-lg font-black text-slate-900">Order Progress</h2>
@@ -341,23 +355,25 @@ const Success = () => {
               ) : null}
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                {!isBillReady ? (
-                  <div className="flex flex-1 items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3.5 text-sm font-semibold text-blue-700">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
-                    <span>Generating your official invoice...</span>
-                  </div>
-                ) : (
-                  <button
-                    id="download-invoice-btn"
-                    onClick={handleDownloadInvoice}
-                    disabled={!jobId}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3.5 font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    Download Invoice
-                  </button>
+                {currentStatus !== 'REJECTED' && (
+                  !isBillReady ? (
+                    <div className="flex flex-1 items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3.5 text-sm font-semibold text-blue-700">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+                      <span>Generating your official invoice...</span>
+                    </div>
+                  ) : (
+                    <button
+                      id="download-invoice-btn"
+                      onClick={handleDownloadInvoice}
+                      disabled={!jobId}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3.5 font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                      Download Invoice
+                    </button>
+                  )
                 )}
 
                 <button

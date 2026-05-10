@@ -50,7 +50,7 @@ const applyOrderUpdate = (previousOrders, incomingOrder, relevantStatuses) => {
 
 const getItemName = (item) => item.menuItemId?.name ?? item.menuItemId ?? 'Item';
 
-const OrderCard = ({ order, isUpdating, onAccept, onMarkReady }) => {
+const OrderCard = ({ order, isUpdating, onAccept, onMarkReady, onReject }) => {
   const config = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.PAID;
 
   return (
@@ -90,7 +90,7 @@ const OrderCard = ({ order, isUpdating, onAccept, onMarkReady }) => {
         )}
       </ul>
 
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+      <div className="mt-5 grid gap-2 sm:grid-cols-3">
         <button
           type="button"
           onClick={() => onAccept(order._id)}
@@ -107,6 +107,19 @@ const OrderCard = ({ order, isUpdating, onAccept, onMarkReady }) => {
           className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isUpdating ? 'Updating...' : 'Mark Ready'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm("Are you sure you want to reject this order? This will trigger a refund.")) {
+              onReject(order._id);
+            }
+          }}
+          disabled={isUpdating}
+          className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-black text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isUpdating ? 'Updating...' : 'Reject Order'}
         </button>
       </div>
     </article>
@@ -302,6 +315,7 @@ const KitchenDisplay = () => {
                         isUpdating={Boolean(updatingOrderIds[order._id])}
                         onAccept={(orderId) => handleUpdateStatus(orderId, 'PREPARING')}
                         onMarkReady={(orderId) => handleUpdateStatus(orderId, 'READY')}
+                        onReject={(orderId) => handleUpdateStatus(orderId, 'REJECTED')}
                       />
                     ))
                   ) : (
@@ -332,6 +346,7 @@ const KitchenDisplay = () => {
                         isUpdating={Boolean(updatingOrderIds[order._id])}
                         onAccept={(orderId) => handleUpdateStatus(orderId, 'PREPARING')}
                         onMarkReady={(orderId) => handleUpdateStatus(orderId, 'READY')}
+                        onReject={(orderId) => handleUpdateStatus(orderId, 'REJECTED')}
                       />
                     ))
                   ) : (
