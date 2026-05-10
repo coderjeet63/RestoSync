@@ -13,7 +13,16 @@ connectDB();
  * The Worker: The Consumer.
  */
 const orderWorker = new Worker('orderQueue', async (job) => {
-    const { restaurantId, customerName, items, totalAmount } = job.data;
+    const {
+        restaurantId,
+        customerId,
+        customerName,
+        items,
+        totalAmount,
+        paymentStatus,
+        orderType,
+        tableId
+    } = job.data;
 
     console.log(`Processing Order Job: ${job.id} for ${customerName}`);
 
@@ -58,10 +67,14 @@ const orderWorker = new Worker('orderQueue', async (job) => {
 
         const newOrder = new Order({
             restaurantId,
+            customerId,
             customerName,
             items: processedItems,
             totalAmount,
-            status: 'PENDING'
+            status: 'PENDING',
+            paymentStatus: paymentStatus || 'PENDING',
+            orderType: orderType || 'DINE_IN',
+            tableId: tableId || null
         });
 
         await newOrder.save();

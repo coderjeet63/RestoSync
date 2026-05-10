@@ -15,20 +15,27 @@ export const mockWebhookPay = async (req, res) => {
         const resolvedOrderId = await redis.get(`job_order:${paramId}`);
         const lookupId = resolvedOrderId || paramId;
 
-        // 2. Find the order and populate table info if it exists
-        const order = await Order.findById(lookupId).populate('tableId');
+        // 2. Find & update the order
+        // NOTE: Some legacy orders may not have `customerId` persisted. Since `customerId` is required
+        // in the current schema, calling `order.save()` would trigger validation and fail.
+        // We only need to mark payment/order state as paid here, so do an atomic update.
+        const order = await Order.findByIdAndUpdate(
+            lookupId,
+            { $set: { status: 'PAID', paymentStatus: 'PAID' } },
+            { returnDocument: 'after' }
+        ).populate('tableId');
+
         if (!order) {
             return res.status(404).json({
                 message: "Order not found. If you just placed it, please wait a few seconds and try again."
             });
         }
 
-        // 3. Sync payment and order state to 'PAID'
-        order.status = 'PAID';
-        order.paymentStatus = 'PAID';
-        await order.save();
+        if (!order.customerId) {
+            console.warn(`Payment webhook marked order ${order._id} as PAID, but order is missing customerId (legacy/invalid record).`);
+        }
 
-        // 4. Publish the standardized order update event
+        // 3. Publish the standardized order update event
         const payload = await publishOrderUpdated(order);
         console.log(`Published ${ORDER_UPDATED_EVENT} to '${ORDER_EVENTS_CHANNEL}' for Restaurant: ${payload.restaurantId}, Order: ${order._id}`);
 

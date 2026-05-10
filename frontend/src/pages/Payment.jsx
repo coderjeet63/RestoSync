@@ -42,10 +42,11 @@ const Payment = () => {
       setIsProcessing(true);
       setError('');
 
-      await api.post(`/payments/${orderId}/mock-pay`);
+      const response = await api.post(`/payments/${orderId}/mock-pay`);
+      const resolvedOrderId = response.data.order?._id || orderId;
 
       // On success → navigate to success page
-      navigate(`/success?jobId=${orderId}&restaurantId=${restaurantId}&tableId=${tableId}`);
+      navigate(`/success?orderId=${resolvedOrderId}&jobId=${orderId}&restaurantId=${restaurantId}&tableId=${tableId}`);
     } catch (err) {
       console.error('❌ Payment Error:', err);
       setError(err.response?.data?.message || 'Payment failed. Please try again.');

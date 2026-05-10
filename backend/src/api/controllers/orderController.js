@@ -42,6 +42,7 @@ export const placeOrder = async (req, res) => {
     try {
         const customerId = req.customer._id;
         const { restaurantId, customerName, items, totalAmount, orderType, tableId } = req.body;
+        let resolvedTableId = null;
 
         if (!restaurantId || !items || items.length === 0) {
             return res.status(400).json({
@@ -59,6 +60,8 @@ export const placeOrder = async (req, res) => {
 
             if (!table) {
                 console.warn(`Table number "${tableId}" not found for restaurant ${restaurantId}. Proceeding without table lock.`);
+            } else {
+                resolvedTableId = table._id;
             }
         }
 
@@ -82,7 +85,7 @@ export const placeOrder = async (req, res) => {
             totalAmount: totalAmount || 0,
             paymentStatus: 'PENDING',
             orderType: orderType || 'DINE_IN',
-            tableId: tableId || null,
+            tableId: resolvedTableId,
         }, {
             attempts: 3,
             backoff: {
@@ -109,6 +112,37 @@ export const placeOrder = async (req, res) => {
     }
 };
 
+export const getCustomerOrder = async (req, res) => {
+    try {
+        const { id: orderIdParam } = req.params;
+        const customerId = req.customer._id;
+
+        const resolvedOrderId = await redis.get(`job_order:${orderIdParam}`);
+        const lookupId = resolvedOrderId || orderIdParam;
+
+        const order = await Order.findOne({ _id: lookupId, customerId })
+            .populate('items.menuItemId', 'name price')
+            .populate('tableId', 'tableNumber');
+
+        if (!order) {
+            return res.status(404).json({
+                message: 'Order not found for this customer.'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: order
+        });
+    } catch (error) {
+        console.error('Get Customer Order Error:', error.message);
+        return res.status(500).json({
+            message: 'Internal Server Error',
+            error: error.message,
+        });
+    }
+};
+
 /**
  * @desc    Update order status
  * @route   PATCH /api/orders/:id/status
@@ -125,13 +159,21 @@ export const updateOrderStatus = async (req, res) => {
             return res.status(400).json({ message: "Invalid status value" });
         }
 
-        const order = await Order.findOne({ _id: orderId, restaurantId });
+        // Use atomic update to avoid failing validation on legacy/invalid records
+        // that may be missing required fields added later (e.g. customerId).
+        const order = await Order.findOneAndUpdate(
+            { _id: orderId, restaurantId },
+            { $set: { status } },
+            { returnDocument: 'after' }
+        );
+
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        order.status = status;
-        await order.save();
+        if (!order.customerId) {
+            console.warn(`Order ${order._id} status updated to '${status}', but order is missing customerId (legacy/invalid record).`);
+        }
 
         const payload = await publishOrderUpdated(order);
         console.log(`Published ${ORDER_UPDATED_EVENT} to '${ORDER_EVENTS_CHANNEL}' for Restaurant: ${payload.restaurantId}, Order: ${order._id}`);

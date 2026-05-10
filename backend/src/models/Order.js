@@ -8,6 +8,7 @@ const orderItemSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
     customerName: { type: String },
     items: [orderItemSchema],
     totalAmount: { type: Number, required: true },
