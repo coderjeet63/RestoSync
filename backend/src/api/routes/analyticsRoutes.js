@@ -4,8 +4,8 @@ import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
-// GET /api/analytics
+// GET /api/analytics/dashboard
 // Protected route to ensure multi-tenancy isolation and RBAC (Owner/Manager only)
-router.get('/', protect, authorizeRoles('OWNER', 'MANAGER'), getDashboardStats);
+router.get('/dashboard', protect, authorizeRoles('OWNER', 'MANAGER'), getDashboardStats);
 
 export default router;
