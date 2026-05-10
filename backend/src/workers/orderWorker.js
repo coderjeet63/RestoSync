@@ -69,19 +69,22 @@ const orderWorker = new Worker('orderQueue', async (job) => {
             customerName,
             items: processedItems,
             totalAmount,
-            status: 'COMPLETED'
+            status: 'PENDING' // ✅ Valid enum: ['PENDING','PAID','PREPARING','READY','DELIVERED','CANCELLED']
         });
 
         await newOrder.save();
 
         console.log(`✅ Order ${newOrder._id} saved successfully.`);
 
+        // ✅ Store jobId → orderId mapping in Redis (1hr TTL) so frontend can resolve it
+        await redisClient.set(`job_order:${job.id}`, newOrder._id.toString(), { ex: 3600 });
+
         // ⚡ REAL-TIME UPDATE: Notify the frontend that the order is successful
         emitter.emit("order_update", {
             jobId: job.id,
             orderId: newOrder._id,
-            status: "COMPLETED",
-            message: "Your order has been processed successfully!"
+            status: "PENDING",
+            message: "Your order has been placed and is awaiting preparation!"
         });
 
         return { orderId: newOrder._id, status: 'SUCCESS' };

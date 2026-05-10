@@ -8,12 +8,18 @@ import redis from '../../config/redis.js';
  */
 export const mockWebhookPay = async (req, res) => {
     try {
-        const { orderId } = req.params;
+        const paramId = req.params.orderId;
 
-        // 1. Find the order and populate table info if it exists
-        const order = await Order.findById(orderId).populate('tableId');
+        // 1. Resolve jobId → real MongoDB orderId via Redis (worker stores this mapping)
+        const resolvedOrderId = await redis.get(`job_order:${paramId}`);
+        const lookupId = resolvedOrderId || paramId;
+
+        // 2. Find the order and populate table info if it exists
+        const order = await Order.findById(lookupId).populate('tableId');
         if (!order) {
-            return res.status(404).json({ message: "Order not found" });
+            return res.status(404).json({ 
+                message: "Order not found. If you just placed it, please wait a few seconds and try again." 
+            });
         }
 
         // 2. Update payment status to 'PAID'
@@ -21,13 +27,13 @@ export const mockWebhookPay = async (req, res) => {
         await order.save();
 
         // 3. Publish event to Redis for KDS (Socket.io)
-        const payload = JSON.stringify({ 
-            orderId: order._id, 
+        const payload = JSON.stringify({
+            orderId: order._id,
             restaurantId: order.restaurantId,
-            status: 'PAID', 
+            status: 'PAID',
             orderType: order.orderType,
             tableNumber: order.tableId ? order.tableId.tableNumber : 'N/A',
-            message: 'Payment Received! Start Cooking.' 
+            message: 'Payment Received! Start Cooking.'
         });
 
         // Upstash REST client publish
