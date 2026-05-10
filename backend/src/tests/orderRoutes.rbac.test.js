@@ -79,6 +79,9 @@ jest.unstable_mockModule('../models/Order.js', () => ({
         findById: jest.fn().mockImplementation(() =>
             Promise.resolve(orderFindByIdResult.value)
         ),
+        findOne: jest.fn().mockImplementation(() =>
+            Promise.resolve(orderFindByIdResult.value)
+        ),
     },
 }));
 
@@ -125,6 +128,9 @@ describe('PATCH /api/orders/:id/status — RBAC Integration', () => {
         }));
 
         Order.findById.mockImplementation(() =>
+            Promise.resolve(orderFindByIdResult.value)
+        );
+        Order.findOne.mockImplementation(() =>
             Promise.resolve(orderFindByIdResult.value)
         );
     });

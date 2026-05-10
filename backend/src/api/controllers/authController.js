@@ -2,11 +2,23 @@ import { User } from '../../models/User.js';
 import jwt from 'jsonwebtoken';
 
 // Generate JWT
-const generateToken = (id, restaurantId) => {
-    return jwt.sign({ id, restaurantId }, process.env.JWT_SECRET, {
+const generateToken = (user) => {
+    return jwt.sign({
+        id: user._id,
+        restaurantId: user.restaurantId,
+        role: user.role
+    }, process.env.JWT_SECRET, {
         expiresIn: '1d',
     });
 };
+
+const buildStaffAuthResponse = (user) => ({
+    _id: user._id,
+    email: user.email,
+    role: user.role,
+    restaurantId: user.restaurantId,
+    token: generateToken(user)
+});
 
 /**
  * @desc    Register a new user
@@ -36,13 +48,7 @@ export const registerUser = async (req, res) => {
         });
 
         if (user) {
-            res.status(201).json({
-                _id: user._id,
-                email: user.email,
-                role: user.role,
-                restaurantId: user.restaurantId,
-                token: generateToken(user._id, user.restaurantId)
-            });
+            res.status(201).json(buildStaffAuthResponse(user));
         } else {
             res.status(400).json({ message: "Invalid user data" });
         }
@@ -70,13 +76,7 @@ export const loginUser = async (req, res) => {
 
         // Match password
         if (user && (await user.matchPassword(password))) {
-            res.status(200).json({
-                _id: user._id,
-                email: user.email,
-                role: user.role,
-                restaurantId: user.restaurantId,
-                token: generateToken(user._id, user.restaurantId)
-            });
+            res.status(200).json(buildStaffAuthResponse(user));
         } else {
             res.status(401).json({ message: "Invalid email or password" });
         }
@@ -84,4 +84,18 @@ export const loginUser = async (req, res) => {
         console.error("Login Error:", error);
         res.status(500).json({ message: "Internal server error" });
     }
+};
+
+/**
+ * @desc    Get the authenticated staff user
+ * @route   GET /api/auth/me
+ * @access  Private
+ */
+export const getCurrentUser = async (req, res) => {
+    res.status(200).json({
+        _id: req.user._id,
+        email: req.user.email,
+        role: req.user.role,
+        restaurantId: req.user.restaurantId
+    });
 };

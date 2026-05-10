@@ -12,10 +12,10 @@ import { generateInvoicePDF } from '../../utils/invoiceGenerator.js';
  */
 export const getKitchenOrders = async (req, res) => {
     try {
-        const { restaurantId, status } = req.query;
+        const { status } = req.query;
+        const restaurantId = req.user.restaurantId;
 
-        const filter = {};
-        if (restaurantId) filter.restaurantId = restaurantId;
+        const filter = { restaurantId };
 
         // Support comma-separated statuses e.g. ?status=PAID,PREPARING or single ?status=PAID
         if (status) {
@@ -123,13 +123,14 @@ export const updateOrderStatus = async (req, res) => {
     try {
         const { id: orderId } = req.params;
         const { status } = req.body;
+        const restaurantId = req.user.restaurantId;
 
         const allowedStatuses = ['PENDING', 'PAID', 'PREPARING', 'READY', 'DELIVERED', 'CANCELLED'];
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({ message: "Invalid status value" });
         }
 
-        const order = await Order.findById(orderId);
+        const order = await Order.findOne({ _id: orderId, restaurantId });
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
         }
