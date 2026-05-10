@@ -1,5 +1,6 @@
 import { Order } from '../../models/Order.js';
 import redis from '../../config/redis.js';
+import { ORDER_EVENTS_CHANNEL, ORDER_UPDATED_EVENT, publishOrderUpdated } from '../../utils/orderEvents.js';
 
 /**
  * @desc    Mock Webhook to simulate a successful payment (e.g., from Stripe)
@@ -10,40 +11,30 @@ export const mockWebhookPay = async (req, res) => {
     try {
         const paramId = req.params.orderId;
 
-        // 1. Resolve jobId → real MongoDB orderId via Redis (worker stores this mapping)
+        // 1. Resolve jobId -> real MongoDB orderId via Redis (worker stores this mapping)
         const resolvedOrderId = await redis.get(`job_order:${paramId}`);
         const lookupId = resolvedOrderId || paramId;
 
         // 2. Find the order and populate table info if it exists
         const order = await Order.findById(lookupId).populate('tableId');
         if (!order) {
-            return res.status(404).json({ 
-                message: "Order not found. If you just placed it, please wait a few seconds and try again." 
+            return res.status(404).json({
+                message: "Order not found. If you just placed it, please wait a few seconds and try again."
             });
         }
 
-        // 2. Update payment status to 'PAID'
+        // 3. Sync payment and order state to 'PAID'
+        order.status = 'PAID';
         order.paymentStatus = 'PAID';
         await order.save();
 
-        // 3. Publish event to Redis for KDS (Socket.io)
-        const payload = JSON.stringify({
-            orderId: order._id,
-            restaurantId: order.restaurantId,
-            status: 'PAID',
-            orderType: order.orderType,
-            tableNumber: order.tableId ? order.tableId.tableNumber : 'N/A',
-            message: 'Payment Received! Start Cooking.'
-        });
+        // 4. Publish the standardized order update event
+        const payload = await publishOrderUpdated(order);
+        console.log(`Published ${ORDER_UPDATED_EVENT} to '${ORDER_EVENTS_CHANNEL}' for Restaurant: ${payload.restaurantId}, Order: ${order._id}`);
 
-        // Upstash REST client publish
-        await redis.publish('kitchen-events', payload);
-        console.log(`🔔 Published payment event to 'kitchen-events' for Order: ${order._id}`);
-
-        // 4. Return success
         return res.status(200).json({
             success: true,
-            message: "Payment successful. KDS triggered.",
+            message: "Payment successful. Order updated.",
             order
         });
 

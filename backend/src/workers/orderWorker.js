@@ -1,19 +1,13 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
-import { Emitter } from "@socket.io/redis-emitter";
 import connectDB from '../config/db.js';
 import connection from '../config/queue.js';
 import { Menu } from '../models/Menu.js';
 import { Order } from '../models/Order.js';
 import redisClient from '../config/redis.js';
+import { ORDER_EVENTS_CHANNEL, ORDER_UPDATED_EVENT, publishOrderUpdated } from '../utils/orderEvents.js';
 
-// 1. Connect to Database
 connectDB();
-
-// 2. Initialize Socket.io Emitter (Allows separate worker process to emit events)
-const emitterRedis = new IORedis(process.env.UPSTASH_REDIS_URL);
-const emitter = new Emitter(emitterRedis);
 
 /**
  * The Worker: The Consumer.
@@ -21,7 +15,7 @@ const emitter = new Emitter(emitterRedis);
 const orderWorker = new Worker('orderQueue', async (job) => {
     const { restaurantId, customerName, items, totalAmount } = job.data;
 
-    console.log(`📦 Processing Order Job: ${job.id} for ${customerName}`);
+    console.log(`Processing Order Job: ${job.id} for ${customerName}`);
 
     try {
         const processedItems = [];
@@ -46,15 +40,13 @@ const orderWorker = new Worker('orderQueue', async (job) => {
                 throw new Error(`Insufficient Inventory for item: ${menuItemId}`);
             }
 
-            // 🔴 Auto-Kill Switch: Disable item and bust cache if stock hits zero
             if (updatedMenu.availableQuantity <= 0 && updatedMenu.isAvailable !== false) {
                 updatedMenu.isAvailable = false;
                 await updatedMenu.save();
-                console.log(`🚨 Item OUT OF STOCK! Auto-disabled: ${updatedMenu.name} (${menuItemId})`);
+                console.log(`Item out of stock. Auto-disabled: ${updatedMenu.name} (${menuItemId})`);
 
-                // Cache Buster: force the public menu API to re-fetch from DB
                 await redisClient.del(`menu_${restaurantId}`);
-                console.log(`🗑️ Cleared Redis cache: menu_${restaurantId}`);
+                console.log(`Cleared Redis cache: menu_${restaurantId}`);
             }
 
             processedItems.push({
@@ -69,36 +61,22 @@ const orderWorker = new Worker('orderQueue', async (job) => {
             customerName,
             items: processedItems,
             totalAmount,
-            status: 'PENDING' // ✅ Valid enum: ['PENDING','PAID','PREPARING','READY','DELIVERED','CANCELLED']
+            status: 'PENDING'
         });
 
         await newOrder.save();
 
-        console.log(`✅ Order ${newOrder._id} saved successfully.`);
+        console.log(`Order ${newOrder._id} saved successfully.`);
 
-        // ✅ Store jobId → orderId mapping in Redis (1hr TTL) so frontend can resolve it
         await redisClient.set(`job_order:${job.id}`, newOrder._id.toString(), { ex: 3600 });
 
-        // ⚡ REAL-TIME UPDATE: Notify the frontend that the order is successful
-        emitter.emit("order_update", {
-            jobId: job.id,
-            orderId: newOrder._id,
-            status: "PENDING",
-            message: "Your order has been placed and is awaiting preparation!"
-        });
+        const payload = await publishOrderUpdated(newOrder);
+        console.log(`Published ${ORDER_UPDATED_EVENT} to '${ORDER_EVENTS_CHANNEL}' for Restaurant: ${payload.restaurantId}, Order: ${newOrder._id}`);
 
         return { orderId: newOrder._id, status: 'SUCCESS' };
 
     } catch (error) {
-        console.error(`❌ Worker Logic Error (Job ${job.id}):`, error.message);
-
-        // ⚡ REAL-TIME UPDATE: Notify the frontend about the failure
-        emitter.emit("order_update", {
-            jobId: job.id,
-            status: "FAILED",
-            error: error.message
-        });
-
+        console.error(`Worker Logic Error (Job ${job.id}):`, error.message);
         throw error;
     }
 }, {
@@ -106,15 +84,14 @@ const orderWorker = new Worker('orderQueue', async (job) => {
     concurrency: 5
 });
 
-// Event Listeners for logging
 orderWorker.on('completed', (job, result) => {
-    console.log(`🏁 Job ${job.id} completed! Order ID: ${result.orderId}`);
+    console.log(`Job ${job.id} completed. Order ID: ${result.orderId}`);
 });
 
 orderWorker.on('failed', (job, err) => {
-    console.error(`🚩 Job ${job.id} failed: ${err.message}`);
+    console.error(`Job ${job?.id ?? 'unknown'} failed: ${err.message}`);
 });
 
-console.log('👷 Order Worker (Atomic Mode + Socket Emitter) is listening...');
+console.log('Order Worker (standardized order_updated mode) is listening...');
 
 export default orderWorker;

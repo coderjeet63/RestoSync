@@ -1,5 +1,38 @@
 import { io } from 'socket.io-client';
 
-// Single shared socket instance — autoConnect: false lets us connect manually
-// inside components so we control the lifecycle precisely.
-export const socket = io('http://localhost:5000', { autoConnect: false });
+const SOCKET_URL = 'http://localhost:5000';
+
+export const socket = io(SOCKET_URL, {
+  autoConnect: false,
+});
+
+export const connectSocket = () => {
+  if (!socket.connected) {
+    socket.connect();
+  }
+
+  return socket;
+};
+
+export const disconnectSocket = () => {
+  if (socket.connected) {
+    socket.disconnect();
+  }
+};
+
+export const joinRestaurantRoom = (restaurantId) => {
+  if (!restaurantId) {
+    return;
+  }
+
+  connectSocket();
+  socket.emit('join_restaurant', restaurantId);
+};
+
+export const leaveRestaurantRoom = (restaurantId) => {
+  if (!restaurantId) {
+    return;
+  }
+
+  socket.emit('leave_restaurant', restaurantId);
+};

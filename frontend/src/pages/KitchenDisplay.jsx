@@ -1,135 +1,184 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { useStaffAuth } from '../hooks/useStaffAuth';
 import api from '../utils/api';
-import { socket } from '../utils/socket';
+import {
+  connectSocket,
+  disconnectSocket,
+  joinRestaurantRoom,
+  leaveRestaurantRoom,
+  socket,
+} from '../utils/socket';
+
+const KDS_VISIBLE_STATUSES = new Set(['PAID', 'PREPARING']);
 
 const STATUS_CONFIG = {
-  PENDING: { label: 'Pending', bg: 'bg-yellow-50', border: 'border-yellow-200', badge: 'bg-yellow-100 text-yellow-800' },
-  PAID: { label: 'Paid', bg: 'bg-blue-50', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-800' },
-  PREPARING: { label: 'Preparing', bg: 'bg-orange-50', border: 'border-orange-200', badge: 'bg-orange-100 text-orange-800' },
-  READY: { label: 'Ready', bg: 'bg-green-50', border: 'border-green-200', badge: 'bg-green-100 text-green-800' },
+  PAID: {
+    label: 'Paid',
+    badge: 'bg-blue-100 text-blue-800',
+    card: 'border-blue-200 bg-blue-50',
+  },
+  PREPARING: {
+    label: 'Preparing',
+    badge: 'bg-orange-100 text-orange-800',
+    card: 'border-orange-200 bg-orange-50',
+  },
 };
 
-const OrderCard = ({ order, onAccept, onMarkReady, isUpdating }) => {
-  const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.PENDING;
+const sortOrdersByNewest = (orders) => (
+  [...orders].sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0))
+);
+
+const mergeOrderSnapshot = (existingOrder, incomingOrder) => ({
+  ...existingOrder,
+  ...incomingOrder,
+  items: incomingOrder.items?.length ? incomingOrder.items : (existingOrder?.items ?? []),
+  tableId: incomingOrder.tableId ?? existingOrder?.tableId ?? null,
+  createdAt: incomingOrder.createdAt ?? existingOrder?.createdAt ?? new Date().toISOString(),
+});
+
+const applyOrderUpdate = (previousOrders, incomingOrder, relevantStatuses) => {
+  const existingOrder = previousOrders.find((order) => String(order._id) === String(incomingOrder._id));
+  const nextOrder = mergeOrderSnapshot(existingOrder, incomingOrder);
+  const remainingOrders = previousOrders.filter((order) => String(order._id) !== String(nextOrder._id));
+
+  if (!relevantStatuses.has(nextOrder.status)) {
+    return remainingOrders;
+  }
+
+  return sortOrdersByNewest([nextOrder, ...remainingOrders]);
+};
+
+const getItemName = (item) => item.menuItemId?.name ?? item.menuItemId ?? 'Item';
+
+const OrderCard = ({ order, isUpdating, onAccept, onMarkReady }) => {
+  const config = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.PAID;
 
   return (
-    <div className={`${cfg.bg} ${cfg.border} flex flex-col gap-3 rounded-2xl border p-4 shadow-sm`}>
-      <div className="flex items-start justify-between">
+    <article className={`${config.card} rounded-3xl border p-5 shadow-lg shadow-slate-900/5`}>
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="mb-0.5 font-mono text-xs text-gray-400">
+          <p className="mb-1 font-mono text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
             #{String(order._id).slice(-6).toUpperCase()}
           </p>
-          <p className="text-sm font-black text-gray-800">
+          <h2 className="text-lg font-black text-slate-900">
             {order.customerName || 'Guest'}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
-          {order.tableId?.tableNumber && (
-            <p className="mt-0.5 text-xs text-gray-500">
-              Table {order.tableId.tableNumber}
-            </p>
-          )}
         </div>
-        <span className={`${cfg.badge} rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide`}>
-          {cfg.label}
+
+        <span className={`${config.badge} rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em]`}>
+          {config.label}
         </span>
       </div>
 
-      <ul className="divide-y divide-white/70 text-sm">
+      <ul className="mt-5 space-y-2">
         {order.items.length > 0 ? (
-          order.items.map((item, idx) => {
-            const name = item.menuItemId?.name ?? item.menuItemId ?? 'Item';
-            return (
-              <li key={idx} className="flex justify-between py-1.5">
-                <span className="text-gray-700">{name}</span>
-                <span className="rounded-lg bg-white/60 px-2 font-bold text-gray-800">
-                  x {item.quantity}
-                </span>
-              </li>
-            );
-          })
+          order.items.map((item, index) => (
+            <li key={`${order._id}-${index}`} className="flex items-center justify-between rounded-2xl bg-white/80 px-3 py-2 text-sm">
+              <span className="font-semibold text-slate-700">{getItemName(item)}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black uppercase tracking-wide text-slate-700">
+                x {item.quantity}
+              </span>
+            </li>
+          ))
         ) : (
-          <li className="py-1.5 text-xs text-gray-500">Waiting for full order details...</li>
+          <li className="rounded-2xl bg-white/60 px-3 py-3 text-sm text-slate-500">
+            Waiting for item details...
+          </li>
         )}
       </ul>
 
-      <p className="text-[10px] text-gray-400">
-        {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </p>
-
-      <div className="mt-1 flex gap-2">
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
         <button
+          type="button"
           onClick={() => onAccept(order._id)}
-          disabled={isUpdating}
-          className="flex-1 rounded-xl bg-blue-600 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isUpdating || order.status === 'PREPARING'}
+          className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isUpdating ? 'Updating...' : 'Accept'}
+          {isUpdating && order.status !== 'PREPARING' ? 'Updating...' : 'Accept'}
         </button>
+
         <button
+          type="button"
           onClick={() => onMarkReady(order._id)}
           disabled={isUpdating}
-          className="flex-1 rounded-xl bg-green-600 py-2 text-xs font-bold text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isUpdating ? 'Updating...' : 'Mark Ready'}
         </button>
       </div>
-    </div>
+    </article>
   );
 };
 
-const KanbanColumn = ({ title, orders, color, onAccept, onMarkReady, updatingOrderIds }) => (
-  <div className="flex min-w-[280px] flex-col gap-3">
-    <div className={`flex items-center justify-between rounded-xl px-3 py-2 ${color}`}>
-      <h2 className="text-sm font-black uppercase tracking-wider text-gray-700">{title}</h2>
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-gray-700 shadow-sm">
-        {orders.length}
-      </span>
-    </div>
-    <div className="flex flex-col gap-3">
-      {orders.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
-          No orders here
-        </div>
-      ) : (
-        orders.map((order) => (
-          <OrderCard
-            key={order._id}
-            order={order}
-            onAccept={onAccept}
-            onMarkReady={onMarkReady}
-            isUpdating={Boolean(updatingOrderIds[order._id])}
-          />
-        ))
-      )}
-    </div>
-  </div>
-);
-
 const KitchenDisplay = () => {
   const { logout, staffUser } = useStaffAuth();
+  const restaurantId = staffUser?.restaurantId;
   const [activeOrders, setActiveOrders] = useState([]);
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatingOrderIds, setUpdatingOrderIds] = useState({});
 
+  const hydrateInitialOrders = useEffectEvent((orders) => {
+    const nextOrders = (orders ?? []).reduce(
+      (collection, order) => applyOrderUpdate(collection, order, KDS_VISIBLE_STATUSES),
+      [],
+    );
+
+    setActiveOrders(nextOrders);
+  });
+
+  const handleOrderUpdated = useEffectEvent((payload) => {
+    const incomingOrder = payload?.order;
+    if (!incomingOrder?._id) {
+      return;
+    }
+
+    setActiveOrders((previousOrders) => applyOrderUpdate(previousOrders, incomingOrder, KDS_VISIBLE_STATUSES));
+    setUpdatingOrderIds((previousIds) => {
+      if (!previousIds[incomingOrder._id]) {
+        return previousIds;
+      }
+
+      const nextIds = { ...previousIds };
+      delete nextIds[incomingOrder._id];
+      return nextIds;
+    });
+  });
+
   useEffect(() => {
-    socket.connect();
+    if (!restaurantId) {
+      return undefined;
+    }
 
-    const handleConnect = () => setIsConnected(true);
-    const handleDisconnect = () => setIsConnected(false);
+    const currentSocket = connectSocket();
+    joinRestaurantRoom(restaurantId);
 
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
+    const handleConnect = () => {
+      setIsConnected(true);
+      joinRestaurantRoom(restaurantId);
+    };
+
+    const handleDisconnect = () => {
+      setIsConnected(false);
+    };
+
+    currentSocket.on('connect', handleConnect);
+    currentSocket.on('disconnect', handleDisconnect);
+    currentSocket.on('order_updated', handleOrderUpdated);
 
     const fetchInitialOrders = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/orders?status=PENDING,PAID,PREPARING,READY');
-        setActiveOrders(response.data.data ?? []);
+        const response = await api.get('/orders?status=PAID,PREPARING');
+        hydrateInitialOrders(response.data.data);
         setError('');
-      } catch (err) {
-        console.error('KDS fetch error:', err);
-        setError('Failed to load orders. Make sure you are logged in as kitchen staff.');
+      } catch (fetchError) {
+        console.error('KDS fetch error:', fetchError);
+        setError(fetchError.response?.data?.message || 'Failed to load active kitchen orders.');
       } finally {
         setLoading(false);
       }
@@ -137,153 +186,80 @@ const KitchenDisplay = () => {
 
     fetchInitialOrders();
 
-    const handleKitchenEvent = (data) => {
-      setActiveOrders((prev) => {
-        const exists = prev.find((order) => String(order._id) === String(data.orderId));
-
-        if (exists) {
-          return prev.map((order) =>
-            String(order._id) === String(data.orderId)
-              ? { ...order, status: data.status ?? order.status }
-              : order
-          );
-        }
-
-        return [
-          {
-            _id: data.orderId,
-            customerName: data.customerName ?? 'Guest',
-            status: data.status ?? 'PAID',
-            orderType: data.orderType,
-            tableId: data.tableNumber ? { tableNumber: data.tableNumber } : null,
-            items: [],
-            createdAt: new Date().toISOString(),
-          },
-          ...prev,
-        ];
-      });
-    };
-
-    const handleStatusUpdate = (data) => {
-      setActiveOrders((prev) =>
-        prev
-          .map((order) =>
-            String(order._id) === String(data.orderId)
-              ? { ...order, status: data.status }
-              : order
-          )
-          .filter((order) => !['DELIVERED', 'CANCELLED'].includes(order.status))
-      );
-
-      setUpdatingOrderIds((prev) => {
-        const next = { ...prev };
-        delete next[data.orderId];
-        return next;
-      });
-    };
-
-    socket.on('kitchenEvent', handleKitchenEvent);
-    socket.on('orderStatusUpdated', handleStatusUpdate);
-
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-      socket.off('kitchenEvent', handleKitchenEvent);
-      socket.off('orderStatusUpdated', handleStatusUpdate);
-      socket.disconnect();
+      currentSocket.off('connect', handleConnect);
+      currentSocket.off('disconnect', handleDisconnect);
+      currentSocket.off('order_updated', handleOrderUpdated);
+      leaveRestaurantRoom(restaurantId);
+      disconnectSocket();
     };
-  }, []);
+  }, [restaurantId]);
 
-  const handleUpdateStatus = async (orderId, newStatus) => {
+  const handleUpdateStatus = async (orderId, nextStatus) => {
     const targetOrder = activeOrders.find((order) => String(order._id) === String(orderId));
-    const previousStatus = targetOrder?.status;
-
-    if (!targetOrder || previousStatus === newStatus) {
+    if (!targetOrder || targetOrder.status === nextStatus) {
       return;
     }
 
+    const previousStatus = targetOrder.status;
+
     setError('');
-    setUpdatingOrderIds((prev) => ({ ...prev, [orderId]: true }));
-    setActiveOrders((prev) =>
-      prev.map((order) =>
-        String(order._id) === String(orderId)
-          ? { ...order, status: newStatus }
-          : order
-      )
-    );
+    setUpdatingOrderIds((previousIds) => ({ ...previousIds, [orderId]: true }));
+    setActiveOrders((previousOrders) => applyOrderUpdate(
+      previousOrders,
+      { ...targetOrder, status: nextStatus },
+      KDS_VISIBLE_STATUSES,
+    ));
 
     try {
-      await api.patch(`/orders/${orderId}/status`, { status: newStatus });
-      setUpdatingOrderIds((prev) => {
-        const next = { ...prev };
-        delete next[orderId];
-        return next;
-      });
-    } catch (err) {
-      console.error('Failed to update order status:', err);
+      await api.patch(`/orders/${orderId}/status`, { status: nextStatus });
+    } catch (updateError) {
+      console.error('Failed to update order status:', updateError);
 
-      if (previousStatus) {
-        setActiveOrders((prev) =>
-          prev.map((order) =>
-            String(order._id) === String(orderId)
-              ? { ...order, status: previousStatus }
-              : order
-          )
-        );
-      }
+      setActiveOrders((previousOrders) => applyOrderUpdate(
+        previousOrders,
+        { ...targetOrder, status: previousStatus },
+        KDS_VISIBLE_STATUSES,
+      ));
 
-      setError(err.response?.data?.message || 'Failed to update order status. Please try again.');
-      setUpdatingOrderIds((prev) => {
-        const next = { ...prev };
-        delete next[orderId];
-        return next;
+      setUpdatingOrderIds((previousIds) => {
+        const nextIds = { ...previousIds };
+        delete nextIds[orderId];
+        return nextIds;
       });
+      setError(updateError.response?.data?.message || 'Failed to update order status. Please try again.');
     }
   };
 
-  const handleAccept = (orderId) => {
-    handleUpdateStatus(orderId, 'PREPARING');
-  };
-
-  const handleMarkReady = (orderId) => {
-    handleUpdateStatus(orderId, 'READY');
-  };
-
-  const pending = activeOrders.filter((order) => order.status === 'PENDING');
-  const paid = activeOrders.filter((order) => order.status === 'PAID');
-  const preparing = activeOrders.filter((order) => order.status === 'PREPARING');
-  const ready = activeOrders.filter((order) => order.status === 'READY');
+  const paidOrders = activeOrders.filter((order) => order.status === 'PAID');
+  const preparingOrders = activeOrders.filter((order) => order.status === 'PREPARING');
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="border-b border-gray-800 bg-gray-900 px-6 py-4">
-        <div className="mx-auto flex max-w-screen-xl items-center justify-between">
+    <div className="min-h-screen bg-slate-950 text-white">
+      <header className="border-b border-slate-800 bg-slate-900 px-6 py-4">
+        <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-white">Live Kitchen Display</h1>
-            <p className="text-sm text-gray-400">Real-time order board</p>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-300">Chef Station</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-white">Kitchen Display</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? 'animate-pulse bg-green-400' : 'bg-red-500'}`} />
-              <span className={`text-sm font-semibold ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                {isConnected ? 'Live' : 'Disconnected'}
-              </span>
-              <span className="ml-4 text-sm text-gray-500">
-                {activeOrders.length} active order{activeOrders.length !== 1 ? 's' : ''}
-              </span>
-            </div>
 
+          <div className="flex items-center gap-4">
             <div className="hidden text-right sm:block">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                 {staffUser?.role}
               </p>
-              <p className="text-sm text-gray-300">{staffUser?.email}</p>
+              <p className="text-sm text-slate-300">{staffUser?.email}</p>
+            </div>
+
+            <div className="rounded-full border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm font-semibold text-slate-200">
+              <span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-red-500'}`} />
+              {isConnected ? 'Live' : 'Disconnected'}
             </div>
 
             <button
               type="button"
               onClick={logout}
-              className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-bold text-white transition hover:bg-gray-700"
+              className="rounded-2xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm font-black text-white transition hover:bg-slate-700"
             >
               Sign out
             </button>
@@ -291,55 +267,82 @@ const KitchenDisplay = () => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-screen-xl px-6 py-6">
-        {loading && (
+      <main className="mx-auto max-w-screen-xl px-6 py-8">
+        {loading ? (
           <div className="flex items-center justify-center py-24">
-            <div className="mr-3 h-10 w-10 animate-spin rounded-full border-b-2 border-blue-500" />
-            <span className="text-gray-400">Loading orders...</span>
+            <div className="mr-3 h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-blue-400" />
+            <span className="text-slate-400">Loading kitchen orders...</span>
           </div>
-        )}
+        ) : (
+          <>
+            {error && (
+              <div className="mb-6 rounded-2xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+                {error}
+              </div>
+            )}
 
-        {error && !loading && (
-          <div className="mb-6 rounded-xl border border-red-800 bg-red-900/40 px-4 py-3 text-sm text-red-300">
-            {error}
-          </div>
-        )}
+            <div className="grid gap-6 xl:grid-cols-2">
+              <section>
+                <div className="mb-4 flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-slate-900">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-700">Freshly Paid</p>
+                    <h2 className="mt-1 text-xl font-black">Waiting for Acceptance</h2>
+                  </div>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-black text-blue-700">
+                    {paidOrders.length}
+                  </span>
+                </div>
 
-        {!loading && (
-          <div className="flex gap-5 overflow-x-auto pb-4">
-            <KanbanColumn
-              title="Pending"
-              orders={pending}
-              color="bg-yellow-100"
-              onAccept={handleAccept}
-              onMarkReady={handleMarkReady}
-              updatingOrderIds={updatingOrderIds}
-            />
-            <KanbanColumn
-              title="Paid"
-              orders={paid}
-              color="bg-blue-100"
-              onAccept={handleAccept}
-              onMarkReady={handleMarkReady}
-              updatingOrderIds={updatingOrderIds}
-            />
-            <KanbanColumn
-              title="Preparing"
-              orders={preparing}
-              color="bg-orange-100"
-              onAccept={handleAccept}
-              onMarkReady={handleMarkReady}
-              updatingOrderIds={updatingOrderIds}
-            />
-            <KanbanColumn
-              title="Ready"
-              orders={ready}
-              color="bg-green-100"
-              onAccept={handleAccept}
-              onMarkReady={handleMarkReady}
-              updatingOrderIds={updatingOrderIds}
-            />
-          </div>
+                <div className="grid gap-4">
+                  {paidOrders.length > 0 ? (
+                    paidOrders.map((order) => (
+                      <OrderCard
+                        key={order._id}
+                        order={order}
+                        isUpdating={Boolean(updatingOrderIds[order._id])}
+                        onAccept={(orderId) => handleUpdateStatus(orderId, 'PREPARING')}
+                        onMarkReady={(orderId) => handleUpdateStatus(orderId, 'READY')}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 px-6 py-12 text-center text-sm text-slate-400">
+                      No paid orders are waiting right now.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <div className="mb-4 flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-slate-900">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-700">In Progress</p>
+                    <h2 className="mt-1 text-xl font-black">Currently Preparing</h2>
+                  </div>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-black text-orange-700">
+                    {preparingOrders.length}
+                  </span>
+                </div>
+
+                <div className="grid gap-4">
+                  {preparingOrders.length > 0 ? (
+                    preparingOrders.map((order) => (
+                      <OrderCard
+                        key={order._id}
+                        order={order}
+                        isUpdating={Boolean(updatingOrderIds[order._id])}
+                        onAccept={(orderId) => handleUpdateStatus(orderId, 'PREPARING')}
+                        onMarkReady={(orderId) => handleUpdateStatus(orderId, 'READY')}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 px-6 py-12 text-center text-sm text-slate-400">
+                      No orders are being prepared at the moment.
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          </>
         )}
       </main>
     </div>

@@ -184,6 +184,7 @@ describe('PATCH /api/orders/:id/status — RBAC Integration', () => {
 
         const mockOrder = {
             _id: MOCK_ORDER_ID,
+            restaurantId: 'restaurant-1',
             tableId: 'table-1',
             status: 'PENDING',
             save: jest.fn().mockImplementation(function () {
@@ -204,7 +205,7 @@ describe('PATCH /api/orders/:id/status — RBAC Integration', () => {
         expect(res.body.data.status).toBe('PREPARING');
         expect(mockOrder.save).toHaveBeenCalledTimes(1);
         expect(redisPublishMock).toHaveBeenCalledWith(
-            'order-updates',
+            'order-events',
             expect.stringContaining('"status":"PREPARING"')
         );
     });

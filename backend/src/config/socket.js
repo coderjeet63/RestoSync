@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import IORedis from 'ioredis';
+import { getRestaurantRoom, ORDER_EVENTS_CHANNEL, ORDER_UPDATED_EVENT } from '../utils/orderEvents.js';
 
 let io;
 
@@ -9,40 +10,65 @@ let io;
  * @param {Object} httpServer - The native Node.js HTTP server.
  */
 export const initSocket = (httpServer) => {
-    // 1. Initialize Pub/Sub clients for Redis Adapter
     const pubClient = new IORedis(process.env.UPSTASH_REDIS_URL);
     const subClient = pubClient.duplicate();
 
-    // 2. Initialize Socket.io
     io = new Server(httpServer, {
         cors: {
-            origin: "*", // Adjust in production
+            origin: "*",
             methods: ["GET", "POST"]
         }
     });
 
-    // 3. Attach Redis Adapter
     io.adapter(createAdapter(pubClient, subClient));
 
-    // 4. Manual Pub/Sub for custom events
     const manualSubClient = pubClient.duplicate();
-    manualSubClient.subscribe('kitchen-events', 'order-updates', (err) => {
-        if (err) console.error("Failed to subscribe to Redis channels", err);
-    });
-
-    manualSubClient.on('message', (channel, message) => {
-        if (channel === 'kitchen-events') {
-            io.emit('kitchenEvent', JSON.parse(message));
-        } else if (channel === 'order-updates') {
-            io.emit('orderStatusUpdated', JSON.parse(message));
+    manualSubClient.subscribe(ORDER_EVENTS_CHANNEL, (err) => {
+        if (err) {
+            console.error("Failed to subscribe to Redis channels", err);
         }
     });
 
+    manualSubClient.on('message', (channel, message) => {
+        if (channel !== ORDER_EVENTS_CHANNEL) {
+            return;
+        }
+
+        const payload = JSON.parse(message);
+        if (!payload.restaurantId) {
+            return;
+        }
+
+        io.to(getRestaurantRoom(payload.restaurantId)).emit(ORDER_UPDATED_EVENT, payload);
+    });
+
     io.on('connection', (socket) => {
-        console.log(`🔌 New client connected: ${socket.id}`);
+        console.log(`New client connected: ${socket.id}`);
+
+        socket.on('join_restaurant', (data) => {
+            const restaurantId = typeof data === 'string' ? data : data?.restaurantId;
+            if (!restaurantId) {
+                return;
+            }
+
+            const room = getRestaurantRoom(restaurantId);
+            socket.join(room);
+            console.log(`Socket ${socket.id} joined room ${room}`);
+        });
+
+        socket.on('leave_restaurant', (data) => {
+            const restaurantId = typeof data === 'string' ? data : data?.restaurantId;
+            if (!restaurantId) {
+                return;
+            }
+
+            const room = getRestaurantRoom(restaurantId);
+            socket.leave(room);
+            console.log(`Socket ${socket.id} left room ${room}`);
+        });
 
         socket.on('disconnect', () => {
-            console.log(`🔌 Client disconnected: ${socket.id}`);
+            console.log(`Client disconnected: ${socket.id}`);
         });
     });
 
