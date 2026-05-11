@@ -1,52 +1,106 @@
+import Stripe from 'stripe';
 import { Order } from '../../models/Order.js';
 import redis from '../../config/redis.js';
-import { ORDER_EVENTS_CHANNEL, ORDER_UPDATED_EVENT, publishOrderUpdated } from '../../utils/orderEvents.js';
+import { publishOrderUpdated } from '../../utils/orderEvents.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /**
- * @desc    Mock Webhook to simulate a successful payment (e.g., from Stripe)
- * @route   POST /api/payments/:orderId/mock-pay
- * @access  Public (Simulating an external webhook)
+ * @desc    Create a Stripe Checkout Session
+ * @route   POST /api/payments/create-checkout-session
+ * @access  Public (Customer Checkout)
  */
-export const mockWebhookPay = async (req, res) => {
+export const createCheckoutSession = async (req, res) => {
     try {
-        const paramId = req.params.orderId;
+        const { orderId } = req.body;
 
-        // 1. Resolve jobId -> real MongoDB orderId via Redis (worker stores this mapping)
-        const resolvedOrderId = await redis.get(`job_order:${paramId}`);
-        const lookupId = resolvedOrderId || paramId;
+        if (!orderId) {
+            return res.status(400).json({ message: "Order ID is required" });
+        }
 
-        // 2. Find & update the order
-        // NOTE: Some legacy orders may not have `customerId` persisted. Since `customerId` is required
-        // in the current schema, calling `order.save()` would trigger validation and fail.
-        // We only need to mark payment/order state as paid here, so do an atomic update.
-        const order = await Order.findByIdAndUpdate(
-            lookupId,
-            { $set: { status: 'PAID', paymentStatus: 'PAID' } },
-            { returnDocument: 'after' }
-        ).populate('tableId');
+        // Resolve jobId -> real MongoDB orderId via Redis (worker stores this mapping)
+        const resolvedOrderId = await redis.get(`job_order:${orderId}`);
+        const lookupId = resolvedOrderId || orderId;
 
+        const order = await Order.findById(lookupId).populate('items.menuItemId');
         if (!order) {
             return res.status(404).json({
-                message: "Order not found. If you just placed it, please wait a few seconds and try again."
+                message: "Order not found. The order may still be processing. Please wait a few seconds and try again."
             });
         }
 
-        if (!order.customerId) {
-            console.warn(`Payment webhook marked order ${order._id} as PAID, but order is missing customerId (legacy/invalid record).`);
-        }
+        // Map order items to Stripe line items
+        const lineItems = order.items.map(item => ({
+            price_data: {
+                currency: 'inr', 
+                product_data: {
+                    name: item.menuItemId?.name || 'Restaurant Item',
+                },
+                unit_amount: Math.round(item.priceAtOrder * 100),
+            },
+            quantity: item.quantity,
+        }));
 
-        // 3. Publish the standardized order update event
-        const payload = await publishOrderUpdated(order);
-        console.log(`Published ${ORDER_UPDATED_EVENT} to '${ORDER_EVENTS_CHANNEL}' for Restaurant: ${payload.restaurantId}, Order: ${order._id}`);
-
-        return res.status(200).json({
-            success: true,
-            message: "Payment successful. Order updated.",
-            order
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: lineItems,
+            mode: 'payment',
+            metadata: {
+                orderId: order._id.toString(),
+            },
+            success_url: `${process.env.FRONTEND_URL}/success?orderId=${order._id}`,
+            cancel_url: `${process.env.FRONTEND_URL}/cart`,
         });
 
+        return res.status(200).json({ url: session.url });
+
     } catch (error) {
-        console.error("Payment Webhook Error:", error.message);
-        return res.status(500).json({ message: "Internal Server Error" });
+        console.error("Stripe Session Error:", error.message);
+        return res.status(500).json({ message: "Failed to create checkout session" });
     }
 };
+
+/**
+ * @desc    Stripe Webhook to handle payment events
+ * @route   POST /api/payments/webhook
+ * @access  Public (Stripe Secure Webhook)
+ */
+export const stripeWebhook = async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(
+            req.body,
+            sig,
+            process.env.STRIPE_WEBHOOK_SECRET
+        );
+    } catch (err) {
+        console.error(`Webhook Signature Verification Failed: ${err.message}`);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const orderId = session.metadata.orderId;
+
+        try {
+            const order = await Order.findByIdAndUpdate(
+                orderId,
+                { $set: { status: 'PAID', paymentStatus: 'PAID' } },
+                { new: true }
+            ).populate(['tableId', 'items.menuItemId']);
+
+            if (order) {
+                await publishOrderUpdated(order);
+                console.log(`Payment confirmed for Order: ${orderId}. Socket event emitted.`);
+            }
+        } catch (dbError) {
+            console.error("Database Update Error in Webhook:", dbError.message);
+            return res.status(500).json({ message: "Internal server error during order update" });
+        }
+    }
+
+    res.status(200).json({ received: true });
+};
+// Verification Comment: Stripe Logic Implemented

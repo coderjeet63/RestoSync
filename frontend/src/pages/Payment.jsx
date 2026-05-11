@@ -4,14 +4,14 @@ import api from '../utils/api';
 
 const Payment = () => {
   const [searchParams] = useSearchParams();
-  const navigate       = useNavigate();
+  const navigate = useNavigate();
 
-  const orderId      = searchParams.get('orderId');
+  const orderId = searchParams.get('orderId');
   const restaurantId = searchParams.get('restaurantId');
-  const tableId      = searchParams.get('tableId');
+  const tableId = searchParams.get('tableId');
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError]               = useState('');
+  const [error, setError] = useState('');
 
   // ─── Missing orderId guard ─────────────────────────────────────────────
   if (!orderId) {
@@ -36,20 +36,24 @@ const Payment = () => {
     );
   }
 
-  // ─── Mock payment handler ──────────────────────────────────────────────
+  // ─── Stripe payment handler ──────────────────────────────────────────────
   const handlePayment = async () => {
     try {
       setIsProcessing(true);
       setError('');
 
-      const response = await api.post(`/payments/${orderId}/mock-pay`);
-      const resolvedOrderId = response.data.order?._id || orderId;
+      // Create Stripe Checkout Session
+      const response = await api.post('/payments/create-checkout-session', { orderId });
 
-      // On success → navigate to success page
-      navigate(`/success?orderId=${resolvedOrderId}&jobId=${orderId}&restaurantId=${restaurantId}&tableId=${tableId}`);
+      if (response.data.url) {
+        // Redirect to Stripe Hosted Checkout
+        window.location.href = response.data.url;
+      } else {
+        throw new Error('Could not initialize payment session.');
+      }
     } catch (err) {
       console.error('❌ Payment Error:', err);
-      setError(err.response?.data?.message || 'Payment failed. Please try again.');
+      setError(err.response?.data?.message || 'Payment initialization failed. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -85,19 +89,16 @@ const Payment = () => {
               <p className="font-mono text-sm text-gray-700 break-all">{orderId}</p>
             </div>
 
-            {/* Mock Card Details */}
-            <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-sm text-gray-500">Card Number</span>
-                <span className="text-sm font-mono text-gray-700">•••• •••• •••• 4242</span>
+            {/* Stripe Branding */}
+            <div className="bg-blue-50 rounded-xl p-4 mb-6 border border-blue-100 flex items-center gap-3">
+              <div className="bg-blue-600 rounded-lg p-2">
+                <svg viewBox="0 0 40 40" className="h-5 w-5 fill-white">
+                  <path d="M32.8 19.3c0-4.6-2.3-7.1-6.6-7.1-2.1 0-3.9.7-5.1 1.5l-.6-1.1h-4.3v17.4l4.8-1v-4.5c.9.6 2.3 1.1 3.9 1.1 4.5 0 7.9-2.2 7.9-6.3zm-4.8 0c0 2.2-1.3 3.3-3.1 3.3-1.1 0-2.1-.3-2.7-.8v-4.8c.7-.6 1.8-1 2.9-1 1.7.1 2.9 1.1 2.9 3.3zM14.6 19.1c0-2.6-1.4-3.7-3.6-3.7-1.1 0-2.1.3-2.7.8v6.2c.6.5 1.7.8 2.8.8 2.3 0 3.5-1.1 3.5-4.1zm-8.3-6.4h4.3l.5 1.1c1.1-.8 2.7-1.5 4.8-1.5 4.3 0 6.6 2.5 6.6 7.1 0 4.1-3.4 6.3-7.9 6.3-1.6 0-3-.5-3.9-1.1v9.8l-4.4.9V12.7z"/>
+                </svg>
               </div>
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-sm text-gray-500">Expiry</span>
-                <span className="text-sm font-mono text-gray-700">12/28</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">CVV</span>
-                <span className="text-sm font-mono text-gray-700">•••</span>
+              <div>
+                <p className="text-sm font-bold text-blue-900">Powered by Stripe</p>
+                <p className="text-[11px] text-blue-600">Secure 128-bit SSL encrypted payment</p>
               </div>
             </div>
 
@@ -122,24 +123,25 @@ const Payment = () => {
               {isProcessing ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
-                  Processing...
+                  Redirecting...
                 </>
               ) : (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                   </svg>
-                  Pay Now (Mock Payment)
+                  Pay Now
                 </>
               )}
             </button>
 
             {/* Disclaimer */}
             <p className="text-center text-[11px] text-gray-400 mt-4">
-              🔒 This is a secure mock environment. No real money will be charged.
+              🔒 You will be redirected to Stripe to complete your payment securely.
             </p>
           </div>
         </div>
+
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 mt-4">

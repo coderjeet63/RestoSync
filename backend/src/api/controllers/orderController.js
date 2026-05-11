@@ -5,6 +5,7 @@ import { Menu } from '../../models/Menu.js';
 import redis from '../../config/redis.js';
 import { generateInvoicePDF } from '../../utils/invoiceGenerator.js';
 import { ORDER_EVENTS_CHANNEL, ORDER_UPDATED_EVENT, publishOrderUpdated } from '../../utils/orderEvents.js';
+import { sendOrderStatusSMS } from '../../utils/smsService.js';
 
 /**
  * @desc    Get active kitchen orders (PENDING, PAID, PREPARING, READY) for KDS initial load
@@ -170,7 +171,7 @@ export const updateOrderStatus = async (req, res) => {
             { _id: orderId, restaurantId },
             { $set: updateData },
             { returnDocument: 'after' }
-        );
+        ).populate('customerId');
 
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
@@ -182,6 +183,11 @@ export const updateOrderStatus = async (req, res) => {
 
         const payload = await publishOrderUpdated(order);
         console.log(`Published ${ORDER_UPDATED_EVENT} to '${ORDER_EVENTS_CHANNEL}' for Restaurant: ${payload.restaurantId}, Order: ${order._id}`);
+
+        // Trigger SMS notification asynchronously (non-blocking)
+        if (order.customerId?.phoneNumber) {
+            sendOrderStatusSMS(order.customerId.phoneNumber, status);
+        }
 
         return res.status(200).json({
             success: true,
