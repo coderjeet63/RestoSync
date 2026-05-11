@@ -1,14 +1,44 @@
 import express from 'express';
-import { getMenuByRestaurant, addMenuItem } from '../controllers/menuController.js';
+import { 
+    getMenuByRestaurant, 
+    addMenuItem, 
+    updateMenuItem, 
+    deleteMenuItem 
+} from '../controllers/menuController.js';
 import { protect, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { upload } from '../middlewares/uploadMiddleware.js';
 
 const router = express.Router();
 
-// GET /api/menus/:restaurantId (Public route for Diners to scan QR and view)
+/**
+ * PUBLIC ROUTES
+ */
+// GET /api/menus/:restaurantId - Fetch menu for diners
 router.route('/:restaurantId').get(getMenuByRestaurant);
 
-// POST /api/menus (Protected route for Owners/Managers to create menu items with Cloudinary image upload)
-router.route('/').post(protect, authorizeRoles('OWNER', 'MANAGER'), upload.single('image'), addMenuItem);
+/**
+ * PROTECTED ADMIN ROUTES
+ */
+// POST /api/menus - Create item
+router.route('/').post(
+    protect, 
+    authorizeRoles('OWNER', 'MANAGER'), 
+    upload.single('image'), 
+    addMenuItem
+);
+
+// PATCH /api/menus/:id - Update item
+router.route('/:id').patch(
+    protect, 
+    authorizeRoles('OWNER', 'MANAGER'), 
+    updateMenuItem
+);
+
+// DELETE /api/menus/:id - Delete item
+router.route('/:id').delete(
+    protect, 
+    authorizeRoles('OWNER', 'MANAGER'), 
+    deleteMenuItem
+);
 
 export default router;
