@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Menu } from '../../models/Menu.js';
 import redis from '../../config/redis.js';
 
@@ -107,7 +108,23 @@ export const getMenuByRestaurant = async (req, res) => {
 
         // 2. Cache Miss - Query MongoDB
         console.log(`[Cache Miss] Fetching menu from Database for restaurant: ${restaurantId}`);
-        const dbData = await Menu.find({ restaurantId }).sort({ category: 1 }).lean();
+        
+        /**
+         * Robust Query: Handling both String and ObjectId references
+         * Some legacy seeds or manual Atlas entries might store restaurantId as a String,
+         * while Mongoose defaults to ObjectId. We check both to be safe.
+         */
+        const query = {
+            $or: [
+                { restaurantId: restaurantId },
+            ]
+        };
+
+        if (mongoose.Types.ObjectId.isValid(restaurantId)) {
+            query.$or.push({ restaurantId: new mongoose.Types.ObjectId(restaurantId) });
+        }
+
+        const dbData = await Menu.find(query).sort({ category: 1 }).lean();
 
         if (!dbData || dbData.length === 0) {
             return res.status(404).json({ message: 'Menu not found for this restaurant' });
