@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { orderQueue } from '../../config/queue.js';
 import { Table } from '../../models/Table.js';
 import { Order } from '../../models/Order.js';
@@ -119,6 +120,13 @@ export const getCustomerOrder = async (req, res) => {
         const customerId = req.customer._id;
 
         const resolvedOrderId = await redis.get(`job_order:${orderIdParam}`);
+        
+        if (!resolvedOrderId && !mongoose.Types.ObjectId.isValid(orderIdParam)) {
+            return res.status(404).json({
+                message: 'Order not found for this customer. It may still be processing.'
+            });
+        }
+
         const lookupId = resolvedOrderId || orderIdParam;
 
         const order = await Order.findOne({ _id: lookupId, customerId })
@@ -208,6 +216,11 @@ export const downloadInvoice = async (req, res) => {
 
         // Resolve BullMQ jobId -> real MongoDB orderId via Redis when needed.
         const resolvedOrderId = await redis.get(`job_order:${param}`);
+
+        if (!resolvedOrderId && !mongoose.Types.ObjectId.isValid(param)) {
+            return res.status(404).json({ message: 'Order Not Found. The order may still be processing. Please wait a moment and try again.' });
+        }
+
         const lookupId = resolvedOrderId || param;
 
         const order = await Order.findById(lookupId).populate('items.menuItemId');

@@ -1,6 +1,8 @@
 import Stripe from 'stripe';
+import mongoose from 'mongoose';
 import { Order } from '../../models/Order.js';
 import redis from '../../config/redis.js';
+import { orderQueue } from '../../config/queue.js';
 import { publishOrderUpdated } from '../../utils/orderEvents.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -20,8 +22,15 @@ export const createCheckoutSession = async (req, res) => {
 
         // Resolve jobId -> real MongoDB orderId via Redis (worker stores this mapping)
         const resolvedOrderId = await redis.get(`job_order:${orderId}`);
-        const lookupId = resolvedOrderId || orderId;
 
+        // If not in Redis and not a valid ObjectId string, it's definitely an unprocessed Job ID
+        if (!resolvedOrderId && !mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(404).json({
+                message: "Order not found. The order may still be processing. Please wait a few seconds and try again."
+            });
+        }
+
+        const lookupId = resolvedOrderId || orderId;
         const order = await Order.findById(lookupId).populate('items.menuItemId');
         if (!order) {
             return res.status(404).json({
@@ -84,21 +93,18 @@ export const stripeWebhook = async (req, res) => {
         const session = event.data.object;
         const orderId = session.metadata.orderId;
 
-        try {
-            const order = await Order.findByIdAndUpdate(
-                orderId,
-                { $set: { status: 'PAID', paymentStatus: 'PAID' } },
-                { new: true }
-            ).populate(['tableId', 'items.menuItemId']);
+        // Add job to BullMQ for asynchronous background processing
+        // This prevents blocking the webhook response and handles high concurrency safely
+        await orderQueue.add('process-paid-order', { 
+            orderId,
+            stripeSessionId: session.id,
+            amountTotal: session.amount_total
+        }, { 
+            attempts: 3, 
+            backoff: { type: 'exponential', delay: 1000 } 
+        });
 
-            if (order) {
-                await publishOrderUpdated(order);
-                console.log(`Payment confirmed for Order: ${orderId}. Socket event emitted.`);
-            }
-        } catch (dbError) {
-            console.error("Database Update Error in Webhook:", dbError.message);
-            return res.status(500).json({ message: "Internal server error during order update" });
-        }
+        console.log(`Payment Webhook: Job 'process-paid-order' added for Order ${orderId}`);
     }
 
     res.status(200).json({ received: true });

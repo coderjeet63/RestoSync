@@ -17,6 +17,7 @@ import tableRoutes from './routes/tableRoutes.js';
 // Other Imports
 import { bullBoardRouter } from '../config/bullBoard.js';
 import { initSocket } from '../config/socket.js';
+import '../workers/orderWorker.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -48,6 +49,12 @@ app.use('/admin/queues', bullBoardRouter);
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'RestoSync API is running with Socket.io' });
+});
+
+app.get('/api/test', (req, res) => {
+    const port = process.env.PORT || 5000;
+    console.log(`🚥 Traffic Cop sent request to PORT: ${port}`);
+    res.send(`Hello from Server running on port ${port}`);
 });
 
 // 5. Start Server
