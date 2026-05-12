@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useStaffAuth } from '../hooks/useStaffAuth';
 import api from '../utils/api';
+import MenuPhotoManager from '../components/MenuPhotoManager';
 import QRGenerator from '../components/QRGenerator';
 
 const StatCard = ({ label, value, description, trend, iconBg }) => (
@@ -146,6 +147,8 @@ const OwnerDashboard = () => {
         {!loading && stats && (
           <QRGenerator restaurantId={staffUser?.restaurantId} />
         )}
+
+        <MenuPhotoManager restaurantId={staffUser?.restaurantId} />
 
         {/* Footer/Context */}
         <footer className="mt-16 border-t border-slate-200 pt-8 text-center">

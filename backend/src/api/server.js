@@ -22,6 +22,14 @@ import '../workers/orderWorker.js';
 const app = express();
 const httpServer = createServer(app);
 
+// Environment Constants
+const PORT = process.env.PORT || 5000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const BASE_URL = NODE_ENV === 'production' 
+    ? (process.env.BACKEND_URL || `https://restosync-backend.onrender.com`) // Default Render fallback or similar
+    : `http://localhost:${PORT}`;
+
 // 1. Initialize Socket.io
 initSocket(httpServer);
 
@@ -29,7 +37,10 @@ initSocket(httpServer);
 connectDB();
 
 // 3. Middlewares
-app.use(cors());
+app.use(cors({
+    origin: FRONTEND_URL,
+    credentials: true
+}));
 
 // CRITICAL: Payment routes handled before global express.json() for Webhook Raw Body
 app.use('/api/payments', paymentRoutes);
@@ -52,15 +63,15 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/test', (req, res) => {
-    const port = process.env.PORT || 5000;
-    console.log(`🚥 Traffic Cop sent request to PORT: ${port}`);
-    res.send(`Hello from Server running on port ${port}`);
+    console.log(`🚥 Traffic Cop sent request to PORT: ${PORT}`);
+    res.send(`Hello from Server running on port ${PORT}`);
 });
 
 // 5. Start Server
-const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📡 Menu API: http://localhost:${PORT}/api/menus/:restaurantId`);
+    console.log(`🚀 Server running in ${NODE_ENV} mode`);
+    console.log(`🔗 Base URL: ${BASE_URL}`);
+    console.log(`📡 Menu API: ${BASE_URL}/api/menus/:restaurantId`);
     console.log(`🔌 Socket.io: Enabled with Redis Adapter`);
+    console.log(`🌍 Frontend URL: ${FRONTEND_URL}`);
 });

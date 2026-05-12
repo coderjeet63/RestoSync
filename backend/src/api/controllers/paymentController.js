@@ -50,6 +50,8 @@ export const createCheckoutSession = async (req, res) => {
             quantity: item.quantity,
         }));
 
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: lineItems,
@@ -57,8 +59,8 @@ export const createCheckoutSession = async (req, res) => {
             metadata: {
                 orderId: order._id.toString(),
             },
-            success_url: `${process.env.FRONTEND_URL}/success?orderId=${order._id}`,
-            cancel_url: `${process.env.FRONTEND_URL}/cart`,
+            success_url: `${FRONTEND_URL}/success?orderId=${order._id}`,
+            cancel_url: `${FRONTEND_URL}/cart`,
         });
 
         return res.status(200).json({ url: session.url });

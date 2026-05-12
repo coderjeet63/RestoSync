@@ -1,9 +1,16 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { addToCart } from '../store/cartSlice';
+import { resolveMenuItemImageUrl } from '../utils/menuItemImages';
 
 const MenuItemCard = ({ item }) => {
   const dispatch = useDispatch();
+  const resolvedImageUrl = resolveMenuItemImageUrl(item);
+  const [hasImageError, setHasImageError] = useState(false);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [resolvedImageUrl]);
 
   const handleAddToCart = () => {
     dispatch(
@@ -17,20 +24,27 @@ const MenuItemCard = ({ item }) => {
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 border border-gray-100">
-      <div className="h-48 w-full bg-gray-200 relative">
-        {item.imageUrl ? (
+      <div className="h-48 w-full bg-gradient-to-br from-orange-100 via-amber-50 to-white relative">
+        {resolvedImageUrl && !hasImageError ? (
           <img
-            src={item.imageUrl}
+            src={resolvedImageUrl}
             alt={item.name}
             className="h-full w-full object-cover"
+            loading="lazy"
+            onError={() => setHasImageError(true)}
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            No Image
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-amber-700">
+            <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-black uppercase tracking-[0.24em] shadow-sm">
+              Photo Pending
+            </span>
+            <p className="text-sm font-semibold text-slate-600">
+              Upload a food picture for this item from the owner dashboard.
+            </p>
           </div>
         )}
         <div className="absolute top-2 right-2 bg-white px-2 py-1 rounded-lg text-sm font-bold text-blue-600 shadow-sm">
-          ${item.price.toFixed(2)}
+          ${Number(item.price ?? 0).toFixed(2)}
         </div>
       </div>
       

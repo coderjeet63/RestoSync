@@ -1,6 +1,82 @@
 import { Menu } from '../../models/Menu.js';
 import redis from '../../config/redis.js';
 
+const parseOptionalNumber = (value) => {
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const parseOptionalText = (value) => {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const trimmedValue = value.trim();
+    return trimmedValue || undefined;
+};
+
+const parseBoolean = (value) => value === true || value === 'true';
+
+const getUploadedImageUrl = (file) => file?.path ?? file?.secure_url ?? null;
+
+const invalidateMenuCaches = async (restaurantId) => {
+    const cacheKeys = [`menu:${restaurantId}`, `public_menu:${restaurantId}`];
+
+    try {
+        await Promise.all(cacheKeys.map((cacheKey) => redis.del(cacheKey)));
+        console.log(`[Cache Invalidated] Menu caches cleared for restaurant: ${restaurantId}`);
+    } catch (redisError) {
+        console.error(`Redis Delete Error: ${redisError.message}`);
+    }
+};
+
+const buildMenuUpdatePayload = (body, file) => {
+    const updatePayload = {};
+
+    const category = parseOptionalText(body.category);
+    if (category !== undefined) {
+        updatePayload.category = category;
+    }
+
+    const name = parseOptionalText(body.name);
+    if (name !== undefined) {
+        updatePayload.name = name;
+    }
+
+    if (body.price !== undefined) {
+        const parsedPrice = parseOptionalNumber(body.price);
+        if (parsedPrice === null) {
+            return { error: 'Price must be a valid number.' };
+        }
+
+        updatePayload.price = parsedPrice;
+    }
+
+    if (body.isAvailable !== undefined) {
+        updatePayload.isAvailable = parseBoolean(body.isAvailable);
+    }
+
+    if (body.availableQuantity !== undefined) {
+        const parsedAvailableQuantity = parseOptionalNumber(body.availableQuantity);
+        if (parsedAvailableQuantity === null) {
+            return { error: 'Available quantity must be a valid number.' };
+        }
+
+        updatePayload.availableQuantity = parsedAvailableQuantity;
+    }
+
+    const imageUrl = getUploadedImageUrl(file);
+    if (imageUrl) {
+        updatePayload.imageUrl = imageUrl;
+    }
+
+    return { updatePayload };
+};
+
 /**
  * @desc    Fetch menu items for a specific restaurant with Cache-Aside pattern.
  * @route   GET /api/menus/:restaurantId
@@ -31,7 +107,7 @@ export const getMenuByRestaurant = async (req, res) => {
 
         // 2. Cache Miss - Query MongoDB
         console.log(`[Cache Miss] Fetching menu from Database for restaurant: ${restaurantId}`);
-        const dbData = await Menu.find({ restaurantId }).sort({ category: 1 });
+        const dbData = await Menu.find({ restaurantId }).sort({ category: 1 }).lean();
 
         if (!dbData || dbData.length === 0) {
             return res.status(404).json({ message: 'Menu not found for this restaurant' });
@@ -68,35 +144,34 @@ export const addMenuItem = async (req, res) => {
     try {
         const { category, name, price, isAvailable, availableQuantity } = req.body;
         const restaurantId = req.user.restaurantId;
+        const normalizedCategory = parseOptionalText(category);
+        const normalizedName = parseOptionalText(name);
+        const parsedPrice = parseOptionalNumber(price);
+        const parsedAvailableQuantity = parseOptionalNumber(availableQuantity);
 
-        if (!category || !name || !price) {
+        if (!normalizedCategory || !normalizedName || parsedPrice === undefined || parsedPrice === null) {
             return res.status(400).json({ message: "Category, name, and price are required." });
         }
 
-        let imageUrl = null;
-        if (req.file && req.file.path) {
-            imageUrl = req.file.path;
+        if (availableQuantity !== undefined && parsedAvailableQuantity === null) {
+            return res.status(400).json({ message: 'Available quantity must be a valid number.' });
         }
+
+        const imageUrl = getUploadedImageUrl(req.file);
 
         const newMenuItem = new Menu({
             restaurantId,
-            category,
-            name,
-            price: Number(price),
-            isAvailable: isAvailable !== undefined ? isAvailable === 'true' || isAvailable === true : true,
-            availableQuantity: availableQuantity ? Number(availableQuantity) : 100,
+            category: normalizedCategory,
+            name: normalizedName,
+            price: parsedPrice,
+            isAvailable: isAvailable !== undefined ? parseBoolean(isAvailable) : true,
+            availableQuantity: parsedAvailableQuantity ?? 100,
             imageUrl
         });
 
         await newMenuItem.save();
 
-        // 5. Invalidate Redis cache for this restaurant
-        try {
-            await redis.del(`menu:${restaurantId}`);
-            console.log(`[Cache Invalidated] Menu for restaurant: ${restaurantId}`);
-        } catch (redisError) {
-            console.error(`Redis Delete Error: ${redisError.message}`);
-        }
+        await invalidateMenuCaches(restaurantId);
 
         return res.status(201).json({
             success: true,
@@ -122,24 +197,27 @@ export const updateMenuItem = async (req, res) => {
     try {
         const { id } = req.params;
         const restaurantId = req.user.restaurantId;
+        const { updatePayload, error } = buildMenuUpdatePayload(req.body, req.file);
+
+        if (error) {
+            return res.status(400).json({ message: error });
+        }
+
+        if (Object.keys(updatePayload).length === 0) {
+            return res.status(400).json({ message: 'Please provide at least one field or image to update.' });
+        }
 
         const updatedItem = await Menu.findOneAndUpdate(
             { _id: id, restaurantId },
-            { $set: req.body },
-            { new: true }
+            { $set: updatePayload },
+            { new: true, runValidators: true }
         );
 
         if (!updatedItem) {
             return res.status(404).json({ message: "Menu item not found or unauthorized" });
         }
 
-        // Invalidate Redis cache
-        try {
-            await redis.del(`menu:${restaurantId}`);
-            console.log(`[Cache Invalidated] Menu updated for restaurant: ${restaurantId}`);
-        } catch (redisError) {
-            console.error(`Redis Delete Error: ${redisError.message}`);
-        }
+        await invalidateMenuCaches(restaurantId);
 
         return res.status(200).json({
             success: true,
@@ -168,13 +246,7 @@ export const deleteMenuItem = async (req, res) => {
             return res.status(404).json({ message: "Menu item not found or unauthorized" });
         }
 
-        // Invalidate Redis cache
-        try {
-            await redis.del(`menu:${restaurantId}`);
-            console.log(`[Cache Invalidated] Menu item deleted for restaurant: ${restaurantId}`);
-        } catch (redisError) {
-            console.error(`Redis Delete Error: ${redisError.message}`);
-        }
+        await invalidateMenuCaches(restaurantId);
 
         return res.status(200).json({
             success: true,

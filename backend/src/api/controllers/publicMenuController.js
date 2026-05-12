@@ -12,27 +12,35 @@ export const getPublicMenu = async (req, res) => {
         const cacheKey = `public_menu:${restaurantId}`;
 
         // 1. Attempt to fetch from Upstash Redis (Cache-Aside pattern)
-        const cachedData = await redis.get(cacheKey);
+        try {
+            const cachedData = await redis.get(cacheKey);
 
-        if (cachedData) {
-            console.log(`[Cache Hit] Serving public menu for restaurant: ${restaurantId}`);
-            return res.status(200).json({
-                success: true,
-                source: 'cache',
-                data: typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData
-            });
+            if (cachedData) {
+                console.log(`[Cache Hit] Serving public menu for restaurant: ${restaurantId}`);
+                return res.status(200).json({
+                    success: true,
+                    source: 'cache',
+                    data: typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData
+                });
+            }
+        } catch (redisError) {
+            console.error(`Redis Get Error: ${redisError.message}`);
         }
 
         // 2. Cache Miss - Query MongoDB
         console.log(`[Cache Miss] Fetching public menu from Database for restaurant: ${restaurantId}`);
-        const dbData = await Menu.find({ restaurantId }).sort({ category: 1 });
+        const dbData = await Menu.find({ restaurantId }).sort({ category: 1 }).lean();
 
         if (!dbData || dbData.length === 0) {
             return res.status(404).json({ success: false, message: 'Menu not found for this restaurant' });
         }
 
         // 3. Store in Redis with 1 hour expiry
-        await redis.set(cacheKey, JSON.stringify(dbData), { ex: 3600 });
+        try {
+            await redis.set(cacheKey, JSON.stringify(dbData), { ex: 3600 });
+        } catch (redisError) {
+            console.error(`Redis Set Error: ${redisError.message}`);
+        }
 
         // 4. Return result
         return res.status(200).json({

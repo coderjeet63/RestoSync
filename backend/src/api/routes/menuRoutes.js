@@ -31,6 +31,7 @@ router.route('/').post(
 router.route('/:id').patch(
     protect, 
     authorizeRoles('OWNER', 'MANAGER'), 
+    upload.single('image'),
     updateMenuItem
 );
 

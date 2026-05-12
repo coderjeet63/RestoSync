@@ -38,6 +38,21 @@ scalable-pos-backend/
 npm install
 ```
 
+### Environment Variables
+
+Create a `.env` file in the `backend` directory with the following variables:
+
+```env
+PORT=5000
+NODE_ENV=development
+MONGO_URI=your_mongodb_uri
+UPSTASH_REDIS_URL=your_redis_url
+STRIPE_SECRET_KEY=your_stripe_key
+STRIPE_WEBHOOK_SECRET=your_webhook_secret
+FRONTEND_URL=http://localhost:5173
+BACKEND_URL=http://localhost:5000
+```
+
 ### Running the Application
 
 ```bash
